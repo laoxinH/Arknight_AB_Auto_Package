@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
         github_text.setStyleSheet("color: #333333;")
         github_layout.addWidget(github_text)
         
-        github_link = QLabel('<a href="https://github.com/yourusername/yourrepo">项目地址</a>')
+        github_link = QLabel('<a href="https://github.com/laoxinH/Arknight_AB_Auto_Package">项目地址</a>')
         github_link.setOpenExternalLinks(True)
         github_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
         github_link.setStyleSheet("color: #0066cc;")
