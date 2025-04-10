@@ -1,0 +1,9 @@
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.12 (Arknight_AB_Auto_Package)" />
+  </component>
+  <component name="JsBuildToolPackageJson" sorting="DEFINITION_ORDER" />
+  <component name="ProjectRootManager">
+    <output url="file://$PROJECT_DIR$/out" />
+  </component>
+</project>
