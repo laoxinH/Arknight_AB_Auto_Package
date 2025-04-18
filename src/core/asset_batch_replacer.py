@@ -22,10 +22,6 @@ class AssetBatchReplacer:
             output_dir: 输出目录，如果为None则使用当前目录
         """
         # 配置日志
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
         # self.output_dir = output_dir or os.getcwd()
         self.logger = logging.getLogger(__name__)
 
@@ -132,7 +128,7 @@ class AssetBatchReplacer:
                                                 # 替换图片
                                                 fp = os.path.join(root1, file1)
                                                 self.logger.info(f"替换图片: {fp}")
-                                                pil_img = Image.open(fp)
+                                                pil_img = Image.open(fp).convert("RGBA")
                                                 data.set_image(img=pil_img, target_format=TextureFormat.RGBA32)
                                                 data.save()
                                                 processed_files.add(file)

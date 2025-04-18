@@ -32,10 +32,6 @@ class AssetExtractor:
         self.temp_dir = None
 
         # 配置日志
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
         self.logger = logging.getLogger(__name__)
 
     def scan_asset(self, asset_path: str) -> (List[{str, str, str, str, str}], str):
@@ -104,7 +100,7 @@ class AssetExtractor:
                     name = f"{data.m_Name}_{obj.path_id}" if hasattr(data,
                                                                      'm_Name') and f"{data.m_Name}_{obj.path_id}" else f"unnamed_{obj.path_id}"
                     data_name = f"{name}" if hasattr(data, 'm_Name') and data.m_Name else f"unnamed_{obj.path_id}"
-                    file_name = os.path.basename(data.m_Name)
+                    file_name = os.path.basename(name)
                     # 截取文件后缀
                     file_ext = os.path.splitext(file_name)[1]
                     name = name.replace(file_ext, "")
@@ -136,7 +132,7 @@ class AssetExtractor:
                         # 保存网格资源到临时文件
                         temp_path = os.path.join(self.temp_dir, f"{name}.obj")
                         with open(temp_path, "w") as f:
-                            f.write(data.m_VertexData)
+                            f.write(str(data.m_VertexData))
                         # files.append((data_name, file_type, temp_path))
 
                     elif file_type == "Material":
@@ -155,6 +151,8 @@ class AssetExtractor:
                     else:
                         # 保存其他类型的资源到临时文件
                         temp_path = os.path.join(self.temp_dir, f"{name}.{file_type.lower()}")
+                        #创建父目录
+                        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
                         try:
                             # 尝试将对象转换为JSON字符串
                             obj_data = {
@@ -179,6 +177,8 @@ class AssetExtractor:
 
                 except Exception as e:
                     self.logger.warning(f"处理资源时出错: {str(e)}")
+                    #打印堆栈
+                    self.logger.error(e, exc_info=True)
                     continue
 
             self.logger.info(f"扫描完成，找到 {len(files)} 个文件")
@@ -279,11 +279,6 @@ class AssetExtractor:
             是否导出成功
         """
         try:
-            # 创建临时目录
-            if self.temp_dir and os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir)
-            self.temp_dir = tempfile.mkdtemp(prefix='arknight_ab_')
-            self.logger.info(f"创建临时目录: {self.temp_dir}")
             # 创建输出目录
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -294,18 +289,18 @@ class AssetExtractor:
 
             # 创建替换文件字典
             replace_dict = {file_info: replace_path for file_info, replace_path in replace_files}
-            print(replace_dict)
-
-
+            # print(replace_dict)
             # 遍历所有对象
             for obj in am.objects:
-
                 if obj.type.name in ["TextAsset", "Texture2D", "AudioClip"]:
                     data = obj.read()
-                    file_name = os.path.basename(data.m_Name)
-                    # 截取文件后缀
-                    file_ext = os.path.splitext(file_name)[1]
-                    name = data.m_Name.replace(file_ext, "")
+                    try:
+                        file_name = os.path.basename(data.m_Name)
+                        # 截取文件后缀
+                        file_ext = os.path.splitext(file_name)[1]
+                        name = data.m_Name.replace(file_ext, "")
+                    except Exception as e:
+                        name = ""
                     obj_name = f"{name}_{obj.path_id}" if hasattr(data,
                                                                          'm_Name') and f"{name}_{obj.path_id}" else f"unnamed_{obj.path_id}"
 
@@ -323,7 +318,7 @@ class AssetExtractor:
 
                         elif obj.type.name == "Texture2D":
                             # 替换图片资源
-                            pil_img = Image.open(replace_path)
+                            pil_img = Image.open(replace_path).convert("RGBA")
                             data.set_image(img=pil_img, target_format=TextureFormat.RGBA32)
                             data.save()
                             self.logger.info(f"已替换图片文件: {obj_name}->{replace_path}")
@@ -359,15 +354,55 @@ class AssetExtractor:
                 f.write(envdata)
             self.logger.info(f"已保存修改后的资源包: {output_path}")
 
-            # 清理临时目录
-            if self.temp_dir and os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir)
-                self.logger.info("已清理临时目录")
             return True
 
         except Exception as e:
             # 打印堆栈
             self.logger.error(f"导出AB资源包时出错: {str(e)}")
-            if self.temp_dir and os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir)
+            return False
+
+
+    def decrypt_ab(self, asset_path: str, output_dir: str) -> bool:
+        # print(replace_files)
+        """
+        导出AB资源包
+
+        Args:
+            asset_path: 原始资源包路径
+            output_dir: 输出目录
+            replace_files: 替换文件列表，每个元素为(文件信息, 替换文件路径)的元组
+
+        Returns:
+            是否导出成功
+        """
+        try:
+            # 创建输出目录
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                self.logger.info(f"创建输出目录: {output_dir}")
+            # 加载资源包
+            self.logger.info(f"正在加载资源包: {asset_path}")
+            am = AssetsManager(asset_path)
+
+            # 处理输出文件名
+            base_name = os.path.basename(asset_path)
+            name, ext = os.path.splitext(base_name)
+            output_path = os.path.join(output_dir, f"{name}{ext}")
+
+            # 如果文件已存在，添加时间戳
+            if os.path.exists(output_path):
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                #获取output_path父目录
+                output_path = os.path.dirname(output_path)
+                output_path = os.path.join(output_path, f"{name}_{timestamp}{ext}")
+            # 保存修改后的资源包
+            with open(output_path, "wb") as f:
+                envdata = am.file.save()
+                f.write(envdata)
+            self.logger.info(f"成功解密 {asset_path} -> {output_path}")
+            return True
+
+        except Exception as e:
+            # 打印堆栈
+            self.logger.error(f"解密错误: {str(e)}")
             return False

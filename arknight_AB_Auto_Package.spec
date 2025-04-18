@@ -13,6 +13,11 @@ unitypy_fmod = os.path.join(unitypy_path, 'lib/FMOD/Windows/x64')
 # 获取 archspec 资源目录
 archspec_path = os.path.dirname(archspec.__file__)
 
+# 获取项目资源目录
+resource_path = os.path.join('src', 'resource')
+payme_path = os.path.join(resource_path, 'payme')
+about_path = os.path.join(resource_path, 'about')
+
 a = Analysis(
     ['src/main.py'],
     pathex=[],
@@ -23,6 +28,8 @@ a = Analysis(
         ('src/resource/icon.webp', 'src/resource'),
         (unitypy_resources, 'UnityPy/resources'),
         (archspec_path, 'archspec'),
+        (payme_path, 'src/resource/payme'),  # 添加支付码图片目录
+        (about_path, 'src/resource/about'),   # 添加关于页面图片目录
     ],
     hiddenimports=[
         'UnityPy.resources',
@@ -49,18 +56,27 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='明日方舟资源包处理工具',
+    name='Arknight_AB_Auto_Package',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # 临时设置为 True 以查看错误信息
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='src/resource/icon.webp'
+    version='file_version_info.txt',  # 添加版本信息文件
+    icon='src/resource/icon.webp',  # 添加图标
+    uac_admin=False,  # 不需要管理员权限
+    # 添加文件信息
+    file_description='Arknight AB Package Tool',
+    product_name='Arknight AB Package Tool',
+    legal_copyright='Copyright (c) 2025',
+    company_name='Arknight Community',
+    # 优化选项
+    optimize=2,  # 使用优化
 ) 

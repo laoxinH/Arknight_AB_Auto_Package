@@ -3,7 +3,7 @@
 """
 import os
 import logging
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QFileDialog, QListWidget, QListWidgetItem,
                              QProgressBar, QMessageBox)
@@ -67,6 +67,325 @@ class BatchPackDialog(QDialog):
             Qt.WindowType.WindowMinimizeButtonHint |
             Qt.WindowType.WindowCloseButtonHint
         )
+        
+        # 初始化主题
+        self.last_theme_is_dark = self.is_dark_mode()
+        self.update_theme()
+        
+        # 创建定时器来检查系统主题变化
+        self.theme_check_timer = QTimer(self)
+        self.theme_check_timer.timeout.connect(self.check_theme_change)
+        self.theme_check_timer.start(10)  # 每秒检查一次
+        
+    def is_dark_mode(self):
+        """检测系统是否处于深色模式"""
+        palette = self.parent().palette()
+        return palette.window().color().lightness() < 128
+        
+    def check_theme_change(self):
+        """检查系统主题是否发生变化"""
+        current_is_dark = self.is_dark_mode()
+        if current_is_dark != self.last_theme_is_dark:
+            self.last_theme_is_dark = current_is_dark
+            self.update_theme()
+            
+    def update_theme(self):
+        """更新主题样式"""
+        is_dark = self.is_dark_mode()
+        if is_dark:
+            self.apply_dark_theme()
+        else:
+            self.apply_light_theme()
+            
+    def apply_dark_theme(self):
+        """应用深色主题"""
+        # 设置全局样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QProgressBar {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #28a745;
+                border-radius: 4px;
+            }
+        """)
+        
+        # 更新按钮样式
+        self.select_source_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border: 1px solid #4c4c4c;
+            }
+            QPushButton:pressed {
+                background-color: #2d2d2d;
+                border: 1px solid #3c3c3c;
+            }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #666666;
+                border: 1px solid #2c2c2c;
+            }
+        """)
+        
+        self.select_replace_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border: 1px solid #4c4c4c;
+            }
+            QPushButton:pressed {
+                background-color: #2d2d2d;
+                border: 1px solid #3c3c3c;
+            }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #666666;
+                border: 1px solid #2c2c2c;
+            }
+        """)
+        
+        self.pack_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border: 1px solid #4c4c4c;
+            }
+            QPushButton:pressed {
+                background-color: #2d2d2d;
+                border: 1px solid #3c3c3c;
+            }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #666666;
+                border: 1px solid #2c2c2c;
+            }
+        """)
+        
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+                border: 1px solid #4c4c4c;
+            }
+            QPushButton:pressed {
+                background-color: #2d2d2d;
+                border: 1px solid #3c3c3c;
+            }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #666666;
+                border: 1px solid #2c2c2c;
+            }
+        """)
+        
+        # 更新列表样式
+        self.source_file_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #3c3c3c;
+            }
+            QListWidget::item:selected {
+                background-color: #3d3d3d;
+                color: #ffffff;
+            }
+            QListWidget::item:hover {
+                background-color: #3d3d3d;
+                color: #ffffff;
+            }
+        """)
+        
+        self.replace_file_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #3c3c3c;
+            }
+            QListWidget::item:selected {
+                background-color: #3d3d3d;
+                color: #ffffff;
+            }
+            QListWidget::item:hover {
+                background-color: #3d3d3d;
+                color: #ffffff;
+            }
+        """)
+        
+    def apply_light_theme(self):
+        """应用浅色主题"""
+        # 设置全局样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ffffff;
+                color: #333333;
+            }
+            QLabel {
+                color: #333333;
+            }
+            QProgressBar {
+                background-color: #f8f9fa;
+                color: #333333;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #28a745;
+                border-radius: 4px;
+            }
+        """)
+        
+        # 更新按钮样式
+        self.select_source_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+            QPushButton:pressed {
+                background-color: #545b62;
+            }
+        """)
+        
+        self.select_replace_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+            QPushButton:pressed {
+                background-color: #545b62;
+            }
+        """)
+        
+        self.pack_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+        """)
+        
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 4px;
+                min-width: 150px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+            QPushButton:pressed {
+                background-color: #bd2130;
+            }
+        """)
+        
+        # 更新列表样式
+        self.source_file_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #eeeeee;
+            }
+            QListWidget::item:selected {
+                background-color: #e6f3ff;
+                color: #0066cc;
+            }
+        """)
+        
+        self.replace_file_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #eeeeee;
+            }
+            QListWidget::item:selected {
+                background-color: #e6f3ff;
+                color: #0066cc;
+            }
+        """)
         
     def setup_ui(self):
         """设置用户界面"""
@@ -199,18 +518,6 @@ class BatchPackDialog(QDialog):
         self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                text-align: center;
-                background-color: white;
-            }
-            QProgressBar::chunk {
-                background-color: #28a745;
-                border-radius: 4px;
-            }
-        """)
         layout.addWidget(self.progress_bar)
         
         # 底部按钮区域
