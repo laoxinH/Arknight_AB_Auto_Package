@@ -139,7 +139,7 @@ class AssetExtractor:
                         for name1, data1 in data.samples.items():
                             with open(temp_path, "wb") as f:
                                 f.write(data1)
-                        # files.append((f"{data_name}.wav", file_type, temp_path))
+                        # files.append((f"{data_name}.wav", file_type, temp_path)) 
                         raw_dict = obj.read_typetree()
                     elif file_type == "Mesh":
                         # 保存网格资源到临时文件
