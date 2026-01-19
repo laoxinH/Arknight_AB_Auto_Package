@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'  # 仅在推送 v 开头的 tag 时触发，如 v1.0.0
 
+permissions:
+  contents: write  # 授予创建 Release 和上传文件的权限
+
 jobs:
   build:
     runs-on: windows-latest
