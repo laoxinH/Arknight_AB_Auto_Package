@@ -75,7 +75,7 @@ exe = EXE(
     # 添加文件信息
     file_description='Unity AB Package Tool',
     product_name='Unity AB Package Tool',
-    legal_copyright='Copyright (c) 2025',
+    legal_copyright='Copyright (c) 2026',
     company_name='MOD 实验室',
     # 优化选项
     optimize=2,  # 使用优化
