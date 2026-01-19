@@ -3,12 +3,12 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from .path_helper import get_logs_dir
 
 def setup_logger():
     """设置日志系统"""
-    # 创建日志目录
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
+    # 使用统一的日志目录管理
+    log_dir = get_logs_dir()
     
     # 生成日志文件名（包含时间戳）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -26,6 +26,7 @@ def setup_logger():
     
     logger = logging.getLogger("ArknightAB")
     logger.info("日志系统初始化完成")
+    logger.info(f"日志文件位置: {log_file}")
     return logger
 
 def log_exception(logger, exc_type, exc_value, exc_traceback):

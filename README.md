@@ -82,12 +82,33 @@ Unity 资源编辑器是一款功能强大的游戏资源包处理工具，支�
 
 ## 🚀 快速开始
 
-### 环境要求
+### 直接使用（推荐）
 
-- Python 3.8 或更高版本
+从 [Releases](https://github.com/laoxinH/Arknight_AB_Auto_Package/releases) 下载最新版本：
+
+1. 下载 `Arknight_AB_Tool_vX.X.X_Windows.zip`
+2. 解压到任意目录
+3. 运行 `Arknight_AB_Auto_Package.exe`
+
+**特点：**
+- ⚡ 无需安装 Python 环境
+- 📦 开箱即用
+- 💾 仅需 ~150MB 空间
+- 🔄 支持便携式使用
+
+**用户数据位置：** `%LOCALAPPDATA%\ArknightABTool\`
+- 日志文件：`logs/`
+- 配置文件：`config.json`
+- 临时文件：`temp/`
+
+### 从源码运行（开发者）
+
+#### 环境要求
+
+- Python 3.12 或更高版本
 - Windows / macOS / Linux
 
-### 安装步骤
+#### 安装步骤
 
 1. **克隆仓库**
 
@@ -105,6 +126,25 @@ Unity 资源编辑器是一款功能强大的游戏资源包处理工具，支�
    ```bash
    python src/main.py
    ```
+
+#### 打包可执行文件
+
+```bash
+# 安装 PyInstaller
+pip install pyinstaller
+
+# 打包（目录模式，推荐）
+pyinstaller arknight_AB_Auto_Package.spec --noconfirm
+
+# 输出位置
+# dist/Arknight_AB_Auto_Package/Arknight_AB_Auto_Package.exe
+```
+
+**目录模式打包优势：**
+- ⚡ 启动速度快 2-5 倍
+- 📦 主程序仅 ~8MB
+- 🐛 依赖问题更少
+- 🔧 易于调试和维护
 
 ---
 
@@ -147,7 +187,40 @@ Arknight_AB_Auto_Package/
 ├── src/
 │   ├── main.py                  # 程序入口
 │   ├── config/                  # 配置管理
-│   │   ├── config_manager.py
+│   │   ├── config_manager.py   # 配置管理器（支持用户目录）
+│   │   └── settings.py          # 设置定义
+│   ├── core/                    # 核心功能
+│   │   ├── ab_processor.py      # AB 处理器
+│   │   ├── asset_extractor.py   # 资源提取器
+│   │   └── abprocessor/         # 游戏特定处理器
+│   ├── ui/                      # 用户界面
+│   │   ├── main_window.py       # 主窗口
+│   │   ├── settings_dialog.py   # 设置对话框
+│   │   └── themes/              # 主题管理
+│   ├── utils/                   # 工具模块
+│   │   ├── logger.py            # 日志系统
+│   │   ├── path_helper.py       # 路径管理（新增）
+│   │   └── zip_utils.py         # 压缩工具
+│   └── worker/                  # 后台任务
+│       └── asset_worker.py      # 异步任务处理
+├── arknight_AB_Auto_Package.spec # PyInstaller 配置
+├── requirements.txt             # Python 依赖
+└── RELEASE_NOTES.md            # 发布说明（新增）
+```
+
+### 核心技术栈
+
+- **UnityPy** - Unity 资源处理
+- **PyQt6** - 现代化 GUI 框架
+- **Pillow** - 图像处理
+- **py7zr** - 7z 压缩支持
+- **多线程** - 提升处理性能
+
+### 打包技术
+
+- **目录模式打包**：EXE + _internal 文件夹
+- **路径管理**：自动适配开发/打包环境
+- **用户数据分离**：配置和日志保存在用户目录
 │   │   └── settings.py
 │   ├── core/                    # 核心功能
 │   │   ├── asset_extractor.py   # 资源提取器

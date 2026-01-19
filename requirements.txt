@@ -3,4 +3,5 @@ UnityPy>=1.7.0
 Pillow>=9.0.0
 numpy>=1.21.0
 py7zr>=0.22.0
+backports-zstd>=1.0.0
 pyzipper>=0.3.6

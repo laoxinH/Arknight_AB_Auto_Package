@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 from .settings import AppSettings
+from ..utils.path_helper import get_config_dir
 
 
 class ConfigManager:
@@ -30,12 +31,9 @@ class ConfigManager:
         self.logger = logging.getLogger(__name__)
         self.settings = AppSettings()
         
-        # 确定配置文件路径
-        self.config_dir = self._get_config_dir()
+        # 使用统一的配置目录管理
+        self.config_dir = get_config_dir()
         self.config_file = self.config_dir / "config.json"
-        
-        # 确保配置目录存在
-        self.config_dir.mkdir(parents=True, exist_ok=True)
         
         # 加载配置
         self.load()
@@ -45,23 +43,14 @@ class ConfigManager:
     
     def _get_config_dir(self) -> Path:
         """
-        获取配置文件目录
-        确保在开发环境和打包环境都能正常工作
+        已弃用：使用 path_helper.get_config_dir() 代替
+        
+        为了保持向后兼容而保留此方法
         
         Returns:
             Path: 配置文件目录路径
         """
-        # 优先使用用户目录，确保在打包后也能正常工作
-        if os.name == 'nt':  # Windows
-            # 使用 AppData/Local 目录
-            base_dir = Path(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')))
-            config_dir = base_dir / "ArknightABTool"
-        else:  # Linux/Mac
-            # 使用 ~/.config 目录
-            base_dir = Path.home() / ".config"
-            config_dir = base_dir / "ArknightABTool"
-        
-        return config_dir
+        return get_config_dir()
     
     def load(self) -> bool:
         """

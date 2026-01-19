@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: 'pip'
           
       - name: Install dependencies
@@ -30,7 +30,17 @@ jobs:
           
       - name: Build with PyInstaller
         run: |
-          pyinstaller arknight_AB_Auto_Package.spec
+          pyinstaller arknight_AB_Auto_Package.spec --noconfirm
+          
+      - name: Verify build output
+        run: |
+          if (Test-Path "dist\Arknight_AB_Auto_Package\Arknight_AB_Auto_Package.exe") {
+            Write-Host "✓ Build successful: EXE file found"
+            Get-ChildItem "dist\Arknight_AB_Auto_Package" | Select-Object Name, Length
+          } else {
+            Write-Error "Build failed: EXE file not found"
+            exit 1
+          }
           
       - name: Get version from tag
         id: get_version
@@ -39,22 +49,83 @@ jobs:
         
       - name: Create ZIP archive
         run: |
-          Compress-Archive -Path dist\* -DestinationPath "Unity_Resource_Editor_${{ steps.get_version.outputs.VERSION }}_Windows.zip"
+          # 压缩整个应用程序目录（目录模式打包）
+          Compress-Archive -Path "dist\Arknight_AB_Auto_Package\*" -DestinationPath "Arknight_AB_Tool_${{ steps.get_version.outputs.VERSION }}_Windows.zip"
+          
+          # 显示压缩包信息
+          $zipFile = Get-Item "Arknight_AB_Tool_${{ steps.get_version.outputs.VERSION }}_Windows.zip"
+          Write-Host "✓ Created ZIP archive: $($zipFile.Name)"
+          Write-Host "  Size: $([math]::Round($zipFile.Length / 1MB, 2)) MB"
           
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Unity_Resource_Editor_${{ steps.get_version.outputs.VERSION }}
-          path: dist/
+          name: Arknight_AB_Tool_${{ steps.get_version.outputs.VERSION }}
+          path: dist/Arknight_AB_Auto_Package/
+          retention-days: 30
           
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Unity 资源编辑器 ${{ steps.get_version.outputs.VERSION }}
-          body: ${{ github.event.head_commit.message }}
+          name: 明日方舟 AB 打包工具 ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## � 更新日志
+            
+            ${{ github.event.head_commit.message }}
+            
+            ---
+            
+            ## 📖 项目简介
+            
+            Unity 资源编辑器是一款功能强大的游戏资源包处理工具，支持多款热门游戏的 Unity AssetBundle 解密、解包、编辑和重新打包。
+            
+            **支持的游戏：**
+            - 🏢 明日方舟 (Arknights)
+            - ⚔️ 交错战线 (Cross Core)
+            - 🔄 重返未来1999 (Reverse: 1999)
+            - 📦 通用 Unity 资源包
+            
+            **开发者：** [MOD实验室](https://www.modwu.com)
+            
+            **💖 支持项目：**
+            - ⭐ 给项目点个 Star
+            - 🔗 分享给更多的朋友
+            - 💰 [赞助支持](https://www.modwu.com/219.html)
+            
+            ---
+            
+            ## 📦 下载说明
+            
+            下载 ZIP 文件后，解压到任意目录，运行 `Arknight_AB_Auto_Package.exe` 即可使用。
+            
+            ## ✨ 主要特性
+            
+            - 📁 **目录模式打包**：启动更快，体积更小
+            - 📝 **日志管理**：支持查看、清理日志文件
+            - ⚙️ **配置管理**：配置文件保存在 `%LOCALAPPDATA%\ArknightABTool`
+            - 🎨 **主题支持**：支持浅色/深色主题切换
+            - 🔓 **智能解密**：自动识别游戏类型并解密
+            
+            ## 📂 文件说明
+            
+            - `Arknight_AB_Auto_Package.exe` - 主程序
+            - `_internal/` - 依赖库和资源文件
+            
+            ## 📌 注意事项
+            
+            - ✅ Windows 10/11 64位系统
+            - ✅ 首次运行可能需要等待几秒
+            - ✅ 日志位置：`%LOCALAPPDATA%\ArknightABTool\logs`
+            - ✅ 配置位置：`%LOCALAPPDATA%\ArknightABTool\config.json`
+            
+            ## 🔗 相关链接
+            
+            - 🌐 [官方网站](https://www.modwu.com/219.html)
+            - 📖 [使用文档](https://github.com/laoxinH/Arknight_AB_Auto_Package/blob/main/README.md)
+            - 💬 [问题反馈](https://github.com/laoxinH/Arknight_AB_Auto_Package/issues)
           draft: false
           prerelease: false
           files: |
-            Unity_Resource_Editor_${{ steps.get_version.outputs.VERSION }}_Windows.zip
+            Arknight_AB_Tool_${{ steps.get_version.outputs.VERSION }}_Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

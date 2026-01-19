@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
                              QLineEdit, QTextEdit, QFileDialog, QGroupBox,
                              QFormLayout, QMessageBox, QScrollArea)
 from src.config.config_manager import ConfigManager
+from src.utils.path_helper import get_logs_dir, get_config_dir
 
 
 class SettingsDialog(QDialog):
@@ -135,7 +136,8 @@ class SettingsDialog(QDialog):
             "• WARNING: 仅记录警告和错误\n"
             "• ERROR: 仅记录错误信息\n"
             "• CRITICAL: 仅记录严重错误\n\n"
-            "日志文件保存位置: logs 文件夹"
+            f"日志文件保存位置:\n{get_logs_dir()}\n\n"
+            f"配置文件保存位置:\n{get_config_dir()}"
         )
         log_desc.setStyleSheet("color: #666666; font-size: 12px;")
         log_desc.setWordWrap(True)
@@ -143,6 +145,48 @@ class SettingsDialog(QDialog):
         
         log_group.setLayout(log_layout)
         layout.addWidget(log_group)
+        
+        # 日志管理组
+        log_manage_group = QGroupBox("日志管理")
+        log_manage_layout = QVBoxLayout()
+        log_manage_layout.setSpacing(15)
+        
+        # 按钮容器
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(10)
+        
+        # 打开日志目录按钮
+        self.open_log_dir_btn = QPushButton("打开日志目录")
+        self.open_log_dir_btn.setMinimumHeight(35)
+        self.open_log_dir_btn.clicked.connect(self.open_log_directory)
+        buttons_layout.addWidget(self.open_log_dir_btn)
+        
+        # 查看最新日志按钮
+        self.view_log_btn = QPushButton("查看最新日志")
+        self.view_log_btn.setMinimumHeight(35)
+        self.view_log_btn.clicked.connect(self.view_latest_log)
+        buttons_layout.addWidget(self.view_log_btn)
+        
+        # 清理所有日志按钮
+        self.clear_logs_btn = QPushButton("清理所有日志")
+        self.clear_logs_btn.setMinimumHeight(35)
+        self.clear_logs_btn.setStyleSheet("QPushButton { background-color: #d32f2f; color: white; }")
+        self.clear_logs_btn.clicked.connect(self.clear_all_logs)
+        buttons_layout.addWidget(self.clear_logs_btn)
+        
+        log_manage_layout.addLayout(buttons_layout)
+        
+        # 日志信息标签
+        self.log_info_label = QLabel()
+        self.log_info_label.setStyleSheet("color: #666666; font-size: 12px;")
+        self.log_info_label.setWordWrap(True)
+        log_manage_layout.addWidget(self.log_info_label)
+        
+        log_manage_group.setLayout(log_manage_layout)
+        layout.addWidget(log_manage_group)
+        
+        # 更新日志信息
+        self.update_log_info()
         
         layout.addStretch()
         return widget
@@ -585,3 +629,200 @@ class SettingsDialog(QDialog):
                 border: none;
             }
         """)
+    
+    def update_log_info(self):
+        """更新日志信息显示"""
+        try:
+            logs_dir = get_logs_dir()
+            log_files = list(logs_dir.glob("app_*.log"))
+            
+            if log_files:
+                # 按修改时间排序
+                log_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                latest_log = log_files[0]
+                
+                # 计算总大小
+                total_size = sum(f.stat().st_size for f in log_files)
+                size_mb = total_size / (1024 * 1024)
+                
+                # 格式化最新日志时间
+                from datetime import datetime
+                latest_time = datetime.fromtimestamp(latest_log.stat().st_mtime)
+                
+                info_text = (
+                    f"日志文件数量: {len(log_files)} 个\n"
+                    f"总占用空间: {size_mb:.2f} MB\n"
+                    f"最新日志: {latest_log.name}\n"
+                    f"创建时间: {latest_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            else:
+                info_text = "暂无日志文件"
+            
+            self.log_info_label.setText(info_text)
+        except Exception as e:
+            self.log_info_label.setText(f"获取日志信息失败: {str(e)}")
+    
+    def open_log_directory(self):
+        """打开日志目录"""
+        try:
+            logs_dir = get_logs_dir()
+            import subprocess
+            import sys
+            
+            if sys.platform == 'win32':
+                os.startfile(str(logs_dir))
+            elif sys.platform == 'darwin':  # macOS
+                subprocess.run(['open', str(logs_dir)])
+            else:  # Linux
+                subprocess.run(['xdg-open', str(logs_dir)])
+            
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"打开日志目录失败:\n{str(e)}")
+    
+    def view_latest_log(self):
+        """查看最新日志"""
+        try:
+            logs_dir = get_logs_dir()
+            log_files = list(logs_dir.glob("app_*.log"))
+            
+            if not log_files:
+                QMessageBox.information(self, "提示", "暂无日志文件")
+                return
+            
+            # 找到最新的日志文件
+            log_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            latest_log = log_files[0]
+            
+            # 创建日志查看对话框
+            log_viewer = QDialog(self)
+            log_viewer.setWindowTitle(f"查看日志 - {latest_log.name}")
+            log_viewer.setMinimumSize(800, 600)
+            
+            layout = QVBoxLayout(log_viewer)
+            
+            # 日志内容显示
+            log_text = QTextEdit()
+            log_text.setReadOnly(True)
+            log_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+            log_text.setStyleSheet("""
+                QTextEdit {
+                    font-family: 'Consolas', 'Monaco', monospace;
+                    font-size: 11px;
+                    background-color: #1e1e1e;
+                    color: #d4d4d4;
+                }
+            """)
+            
+            # 读取日志内容（只读取最后1000行）
+            try:
+                with open(latest_log, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    # 只显示最后1000行
+                    if len(lines) > 1000:
+                        log_text.setPlainText(''.join(lines[-1000:]))
+                        log_text.insertPlainText(f"\n\n[显示最后 1000 行，共 {len(lines)} 行]")
+                    else:
+                        log_text.setPlainText(''.join(lines))
+                    
+                    # 滚动到底部
+                    from PyQt6.QtGui import QTextCursor
+                    cursor = log_text.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.End)
+                    log_text.setTextCursor(cursor)
+            except Exception as e:
+                log_text.setPlainText(f"读取日志失败: {str(e)}")
+            
+            layout.addWidget(log_text)
+            
+            # 按钮区域
+            button_layout = QHBoxLayout()
+            
+            # 在文件管理器中打开
+            open_btn = QPushButton("在文件管理器中打开")
+            open_btn.clicked.connect(lambda: self.open_log_file(latest_log))
+            button_layout.addWidget(open_btn)
+            
+            button_layout.addStretch()
+            
+            # 关闭按钮
+            close_btn = QPushButton("关闭")
+            close_btn.clicked.connect(log_viewer.close)
+            button_layout.addWidget(close_btn)
+            
+            layout.addLayout(button_layout)
+            
+            log_viewer.exec()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"查看日志失败:\n{str(e)}")
+    
+    def open_log_file(self, log_file):
+        """在文件管理器中打开日志文件"""
+        try:
+            import subprocess
+            import sys
+            
+            if sys.platform == 'win32':
+                subprocess.run(['explorer', '/select,', str(log_file)])
+            elif sys.platform == 'darwin':  # macOS
+                subprocess.run(['open', '-R', str(log_file)])
+            else:  # Linux
+                subprocess.run(['xdg-open', str(log_file.parent)])
+        except Exception as e:
+            QMessageBox.warning(self, "提示", f"无法打开文件管理器:\n{str(e)}")
+    
+    def clear_all_logs(self):
+        """清理所有日志文件"""
+        try:
+            logs_dir = get_logs_dir()
+            log_files = list(logs_dir.glob("app_*.log"))
+            
+            if not log_files:
+                QMessageBox.information(self, "提示", "暂无日志文件需要清理")
+                return
+            
+            # 计算总大小
+            total_size = sum(f.stat().st_size for f in log_files)
+            size_mb = total_size / (1024 * 1024)
+            
+            # 确认对话框
+            reply = QMessageBox.question(
+                self,
+                "确认清理",
+                f"确定要删除所有日志文件吗？\n\n"
+                f"共 {len(log_files)} 个文件，占用 {size_mb:.2f} MB\n\n"
+                f"此操作不可恢复！",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                deleted_count = 0
+                failed_files = []
+                
+                for log_file in log_files:
+                    try:
+                        log_file.unlink()
+                        deleted_count += 1
+                    except Exception as e:
+                        failed_files.append(f"{log_file.name}: {str(e)}")
+                
+                # 更新日志信息
+                self.update_log_info()
+                
+                if failed_files:
+                    QMessageBox.warning(
+                        self,
+                        "部分清理成功",
+                        f"成功删除 {deleted_count} 个文件\n\n"
+                        f"失败 {len(failed_files)} 个:\n" + "\n".join(failed_files[:5])
+                    )
+                else:
+                    QMessageBox.information(
+                        self,
+                        "清理完成",
+                        f"成功删除 {deleted_count} 个日志文件\n"
+                        f"释放空间 {size_mb:.2f} MB"
+                    )
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"清理日志失败:\n{str(e)}")
