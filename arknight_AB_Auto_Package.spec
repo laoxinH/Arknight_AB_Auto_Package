@@ -9,6 +9,7 @@ block_cipher = None
 unitypy_path = os.path.dirname(UnityPy.__file__)
 unitypy_resources = os.path.join(unitypy_path, 'resources')
 unitypy_fmod = os.path.join(unitypy_path, 'lib/FMOD/Windows/x64')
+fmod_dll_path = os.path.join(unitypy_fmod, 'fmod.dll')
 
 # 获取 archspec 资源目录
 archspec_path = os.path.dirname(archspec.__file__)
@@ -18,12 +19,15 @@ resource_path = os.path.join('src', 'resource')
 payme_path = os.path.join(resource_path, 'payme')
 about_path = os.path.join(resource_path, 'about')
 
+# 构建 binaries 列表（条件添加 FMOD）
+binaries_list = []
+if os.path.exists(fmod_dll_path):
+    binaries_list.append((fmod_dll_path, 'UnityPy/lib/FMOD/Windows/x64'))
+
 a = Analysis(
     ['src/main.py'],
     pathex=[],
-    binaries=[
-        (os.path.join(unitypy_fmod, 'fmod.dll'), 'UnityPy/lib/FMOD/Windows/x64'),
-    ],
+    binaries=binaries_list,
     datas=[
         ('src/resource/icon.webp', 'src/resource'),
         (unitypy_resources, 'UnityPy/resources'),
@@ -75,7 +79,7 @@ exe = EXE(
     # 添加文件信息
     file_description='Unity AB Package Tool',
     product_name='Unity AB Package Tool',
-    legal_copyright='Copyright (c) 2025',
+    legal_copyright='Copyright (c) 2026',
     company_name='MOD 实验室',
     # 优化选项
     optimize=2,  # 使用优化
