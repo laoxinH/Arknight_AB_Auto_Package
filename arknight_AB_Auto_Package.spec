@@ -2,6 +2,7 @@
 import os
 import UnityPy
 import archspec
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -18,6 +19,9 @@ archspec_path = os.path.dirname(archspec.__file__)
 resource_path = os.path.join('src', 'resource')
 payme_path = os.path.join(resource_path, 'payme')
 about_path = os.path.join(resource_path, 'about')
+
+# 自动收集 src 下所有子模块
+src_hiddenimports = collect_submodules('src')
 
 # 构建 binaries 列表（条件添加 FMOD）
 binaries_list = []
@@ -40,7 +44,7 @@ a = Analysis(
         'archspec',
         'archspec.cpu',
         'archspec.json',
-    ],
+    ] + src_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
