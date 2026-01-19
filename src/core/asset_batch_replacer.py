@@ -6,6 +6,8 @@ import UnityPy
 from PIL import Image
 from UnityPy.enums import TextureFormat
 
+from src.core.abprocessor.BundleProcessorManager import BundleProcessorManager
+
 """批量资源替换器"""
 
 
@@ -23,6 +25,8 @@ class AssetBatchReplacer:
         """
         # 配置日志
         # self.output_dir = output_dir or os.getcwd()
+        self.bundle_processor_manager = BundleProcessorManager()
+
         self.logger = logging.getLogger(__name__)
 
     def replace_spine_files(self, data_dir: str, replace_dir: str, target_dir: str) -> bool:
@@ -68,10 +72,11 @@ class AssetBatchReplacer:
                         bundle_path = os.path.join(root, file)
 
                         # 加载资源包
-                        env = UnityPy.load(bundle_path)
+                        bundle_processor = self.bundle_processor_manager.get_processor_by_ab_type(bundle_path)
+                        am = UnityPy.AssetsManager(bundle_processor.preprocess(asset_path)[0])
 
                         # 处理资源包中的对象
-                        for obj in env.objects:
+                        for obj in am.objects:
                             try:
                                 if obj.type.name == 'TextAsset':
                                     data = obj.read()
@@ -143,7 +148,7 @@ class AssetBatchReplacer:
                             output_path = os.path.join(target_dir, relative_path)
                             os.makedirs(os.path.dirname(output_path), exist_ok=True)
                             with open(output_path, "wb") as f:
-                                envdata = env.file.save(packer="lz4")
+                                envdata = am.file.save(packer=bundle_processor.compression_method().value)
                                 f.write(envdata)
                             self.logger.info(f"已保存资源包: {output_path}")
 

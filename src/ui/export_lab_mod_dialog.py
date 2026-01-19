@@ -6,11 +6,12 @@ import os
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QTextEdit, QFileDialog,
                              QScrollArea, QWidget, QGridLayout, QMessageBox,
-                             QComboBox, QCheckBox)
-from PyQt6.QtCore import Qt, QTimer, QMimeData
-from PyQt6.QtGui import QPixmap, QImage, QDragEnterEvent, QDropEvent
+                             QComboBox, QCheckBox, QApplication)
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QFont, QScreen
 
 from src.worker.export_lab_worker import ExportLabWorker
+from src.config.config_manager import ConfigManager
 
 
 class ExportLabModDialog(QDialog):
@@ -20,15 +21,39 @@ class ExportLabModDialog(QDialog):
         super().__init__(parent)
         self.export_worker = None
         self.setWindowTitle("导出实验室MOD")
-        self.setMinimumSize(600, 500)
+        
+        # 获取屏幕尺寸并计算合适的窗口大小
+        self.screen = QApplication.primaryScreen()
+        self.screen_size = self.screen.size()
+        self.screen_width = self.screen_size.width()
+        self.screen_height = self.screen_size.height()
+        
+        # 计算窗口大小，默认为屏幕的70%
+        self.window_width = int(self.screen_width * 0.7)
+        self.window_height = int(self.screen_height * 0.7)
+        
+        # 设置最小窗口大小，确保在小屏幕上也能正常显示
+        self.min_width = min(500, self.screen_width - 100)
+        self.min_height = min(700, self.screen_height - 100)
+
+        self.setMinimumSize(self.min_width, self.min_height)
+        self.setMaximumHeight(700)
+
+        self.resize(500, self.window_height)
 
         # 存储当前AB资源名称
         self.current_ab_name = current_ab_name
         self.source_file = source_file
         self.replace_files = replace_files
 
+        # 初始化配置管理器
+        self.config = ConfigManager()
+        
         # 初始化UI
         self.setup_ui()
+        
+        # 加载配置
+        self.load_config()
 
         # 初始化主题
         self.last_theme_is_dark = self.is_dark_mode()
@@ -43,6 +68,13 @@ class ExportLabModDialog(QDialog):
         self.preview_images = []
 
         self.logger = logging.getLogger(__name__)
+        
+        # 计算缩放因子
+        self.scale_factor = min(self.window_width / 600, self.window_height / 850)
+        self.update_font_sizes()
+        
+        # 连接窗口大小变化信号
+        self.resizeEvent = self.on_resize_event
 
     def is_dark_mode(self):
         """检测系统是否处于深色模式"""
@@ -381,6 +413,17 @@ class ExportLabModDialog(QDialog):
         ab_name_layout.addStretch()
         layout.addLayout(ab_name_layout)
 
+        # 游戏选择框
+        game_layout = QHBoxLayout()
+        game_label = QLabel("游戏选择:")
+        self.game_combo = QComboBox()
+        self.game_combo.addItems(["明日方舟", "其他游戏"])
+        self.game_combo.setCurrentIndex(0)  # 默认选择明日方舟
+        self.game_combo.currentTextChanged.connect(self.on_game_changed)
+        game_layout.addWidget(game_label)
+        game_layout.addWidget(self.game_combo)
+        layout.addLayout(game_layout)
+
         # 名称输入框
         name_layout = QHBoxLayout()
         name_label = QLabel("名称:")
@@ -446,18 +489,18 @@ class ExportLabModDialog(QDialog):
         self.compression_combo.currentTextChanged.connect(self.on_compression_changed)
         compression_layout.addWidget(compression_label)
         compression_layout.addWidget(self.compression_combo)
-        
+
         # 图种选项
         self.image_zip_checkbox = QCheckBox("启用图种")
         # self.image_zip_checkbox.setEnabled()  # 初始禁用
         self.image_zip_checkbox.stateChanged.connect(self.on_image_zip_changed)
         compression_layout.addWidget(self.image_zip_checkbox)
-        
+
         # 图种图片选择
         self.image_zip_combo = QComboBox()
         self.image_zip_combo.setEnabled(False)  # 初始禁用
         compression_layout.addWidget(self.image_zip_combo)
-        
+
         layout.addLayout(compression_layout)
 
         # 密码输入框
@@ -495,6 +538,26 @@ class ExportLabModDialog(QDialog):
         button_layout.addWidget(self.confirm_btn)
         button_layout.addWidget(self.cancel_btn)
         layout.addLayout(button_layout)
+    
+    def load_config(self):
+        """加载配置"""
+        try:
+            # 加载默认压缩密码
+            default_password = self.config.get('lab_mod_default_password', '')
+            if default_password:
+                self.password_input.setText(default_password)
+            
+            # 加载默认图种启用状态
+            enable_image_steg = self.config.get('lab_mod_enable_image_steganography', False)
+            self.image_zip_checkbox.setChecked(enable_image_steg)
+            
+            # 加载默认MOD描述
+            default_description = self.config.get('lab_mod_default_description', '')
+            if default_description:
+                self.readme_edit.setPlainText(default_description)
+                
+        except Exception as e:
+            self.logger.error(f"加载配置时出错: {str(e)}")
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         """拖拽进入事件"""
@@ -561,7 +624,7 @@ class ExportLabModDialog(QDialog):
                 # 缩放图片以适应预览区域
                 scaled_pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio)
                 preview_label.setPixmap(scaled_pixmap)
-                preview_label.setFixedSize(100, 100)
+                # preview_label.setFixedSize(100, 100)
                 preview_label.setStyleSheet("border: 1px solid #cccccc;")
 
                 # 添加图片到图种选择下拉框
@@ -629,11 +692,19 @@ class ExportLabModDialog(QDialog):
         # 启用或禁用图种图片选择下拉框
         self.image_zip_combo.setEnabled(state == Qt.CheckState.Checked.value)
 
+    def on_game_changed(self, game_name):
+        """游戏选择改变事件"""
+        # 只有当选择明日方舟时才启用MOD类型选择
+        # self.type_combo.setEnabled(game_name == "明日方舟")
+        if game_name != "明日方舟":
+            self.type_combo.setCurrentIndex(0)  # 重置为第一个选项
+
     def on_confirm(self):
         """确认按钮点击事件"""
         # 获取输入内容
         name = self.name_input.text().strip()
         readme = self.readme_edit.toPlainText().strip()
+        game_name = self.game_combo.currentText()
         mod_type = self.type_combo.currentText()
         compression_format = self.compression_combo.currentText()
         use_image_zip = self.image_zip_checkbox.isChecked()
@@ -653,30 +724,43 @@ class ExportLabModDialog(QDialog):
             QMessageBox.warning(self, "警告", "请输入MOD说明")
             return
 
-        # 选择保存目录
+        # 选择保存目录（使用配置的默认目录）
+        default_dir = self.config.get('lab_mod_export_default_dir', '')
+        if not default_dir:
+            # 如果没有配置默认目录，使用上次选择的目录或用户主目录
+            default_dir = self.config.get('last_output_dir', '') or os.path.expanduser("~")
+        
         save_dir = QFileDialog.getExistingDirectory(
             self,
             "选择保存目录",
-            "",
+            default_dir,
             QFileDialog.Option.ShowDirsOnly
         )
         if not save_dir:
             return
+        
+        # 保存最后使用的目录
+        self.config.set('last_output_dir', save_dir)
 
-        type_mapping = {
-            "普通立绘": "chararts",
-            "静态皮肤": "skinpack",
-            "动态皮肤": "dynchars",
-            "剧情立绘": "characters",
-            "剧情CG": "imgs",
-            "肉鸽道具贴图": "spritepack",
-            "界面UI素材": "refs",
-            "肉鸽主题背景": "rglktopic",
-            "个人名片背景": "namecardskin",
-            "敌人修改": "enemies",
-            "特效修改": "effects"
-        }
-        mod_type_value = type_mapping.get(mod_type, "chararts")
+        # 根据游戏类型设置不同的类型映射
+        if game_name == "明日方舟":
+            type_mapping = {
+                "普通立绘": "chararts",
+                "静态皮肤": "skinpack",
+                "动态皮肤": "dynchars",
+                "剧情立绘": "characters",
+                "剧情CG": "imgs",
+                "肉鸽道具贴图": "spritepack",
+                "界面UI素材": "refs",
+                "肉鸽主题背景": "rglktopic",
+                "个人名片背景": "namecardskin",
+                "敌人修改": "enemies",
+                "特效修改": "effects"
+            }
+            mod_type_value = type_mapping.get(mod_type, "chararts")
+        else:
+            # 其他游戏使用通用type_mapping的key
+            mod_type_value = mod_type
         
         # 根据压缩格式设置输出文件扩展名
         output_ext = ".zip" if compression_format == "ZIP" else ".7z"
@@ -706,3 +790,29 @@ class ExportLabModDialog(QDialog):
 
     def on_export_error(self,message):
         QMessageBox.critical(self, "错误", message)
+
+    def on_resize_event(self, event):
+        """窗口大小变化事件"""
+        # 更新缩放因子
+        self.scale_factor = min(self.width() / 600, self.height() / 850)
+        self.update_font_sizes()
+
+    def update_font_sizes(self):
+        """更新字体大小"""
+        # # 遍历所有QLabel并更新字体大小
+        # for widget in self.findChildren(QLabel):
+        #     font = widget.font()
+        #     font.setPointSize(int(font.pointSize() * self.scale_factor))
+        #     widget.setFont(font)
+            
+        # 更新文本编辑框的字体大小
+        self.readme_edit.setFont(QFont("Microsoft YaHei", int(10 * self.scale_factor)))
+        self.update_text_edit_height()
+
+    def update_text_edit_height(self):
+        """更新文本编辑框的高度"""
+        # 计算合适的文本编辑框高度
+        base_height = 150  # 基础高度
+        scaled_height = int(base_height * self.scale_factor)
+        self.readme_edit.setMinimumHeight(scaled_height)
+        self.readme_edit.setMaximumHeight(scaled_height)

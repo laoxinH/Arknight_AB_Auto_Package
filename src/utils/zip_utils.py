@@ -3,13 +3,10 @@ ZIP压缩工具模块
 """
 import os
 import zipfile
-from typing import Optional
 import logging
-from typing import Union, BinaryIO
+from typing import Union
 from pathlib import Path
-import shutil
 import py7zr
-import pyminizip
 import pyzipper
 
 logger = logging.getLogger(__name__)
@@ -53,12 +50,15 @@ def compress_to_zip(source_dir: str, output_path: str, compression_format: str =
                     if password:
                         zipf.setpassword(password.encode('utf-8'))
                     
-                    # 遍历目录并添加文件
-                    for root, dirs, files in os.walk(source_dir):
+                    # 获取源目录的绝对路径
+                    source_dir_abs = os.path.abspath(source_dir)
+                    
+                    # 遍历目录并添加文件，保留完整目录结构
+                    for root, dirs, files in os.walk(source_dir_abs):
                         for file in files:
                             file_path = os.path.join(root, file)
                             # 计算相对路径，确保使用UTF-8编码
-                            arcname = os.path.relpath(file_path, source_dir)
+                            arcname = os.path.relpath(file_path, os.path.dirname(source_dir_abs))
                             zipf.write(file_path, arcname)
                 return True
             except ImportError:

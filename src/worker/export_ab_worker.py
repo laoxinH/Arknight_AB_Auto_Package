@@ -18,7 +18,7 @@ class ExportABWorker(QThread):
     def run(self):
         try:
             self.progress.emit(f"正在导出AB资源包: {self.source_file}")
-            extractor = AssetExtractor(self.output_dir)
+            extractor = AssetExtractor()
 
             # 导出AB资源包
             success = extractor.export_ab(

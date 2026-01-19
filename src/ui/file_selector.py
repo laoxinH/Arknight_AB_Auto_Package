@@ -4,20 +4,27 @@
 import os
 import logging
 import shutil
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QListWidget,
-                             QLabel, QPushButton, QSplitter, QListWidgetItem,
+import json
+from PyQt6.QtWidgets import ( QVBoxLayout, QHBoxLayout,
+                             QLabel, QPushButton, QSplitter,
                              QFileDialog, QMessageBox, QFrame, QMenu, QGroupBox, QButtonGroup, QRadioButton,
-                             QProgressBar, QSlider, QScrollArea, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QLineEdit)
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QUrl, QTimer, QMimeData, QByteArray, QThread
-from PyQt6.QtGui import QPixmap, QImage, QContextMenuEvent, QColor, QBrush, QIcon, QDrag, QPainter
+                             QSlider, QScrollArea, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+                             QLineEdit, QTextEdit, QApplication)
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QUrl, QTimer, QMimeData, QByteArray
+from PyQt6.QtGui import QPixmap, QColor, QBrush, QIcon, QDrag, QPainter, QFont
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from .export_lab_mod_dialog import ExportLabModDialog
+from .widgets.json_highlighter import JsonHighlighter
+from .widgets.file_size_item import FileSizeItem
+from .themes.file_selector_theme_manager import ThemeManager
+from .preview.preview_manager import PreviewManager
+from ..worker.export_image_worker import ExportImageWorker
+from ..config.config_manager import ConfigManager
 
 from ..core.asset_extractor import AssetExtractor
 
 
-class FileSelectorDialog(QDialog):
+class FileSelectorDialog(QWidget):
     """文件选择器对话框"""
     files_selected = pyqtSignal(list)  # 选中的文件列表
     file_replaced = pyqtSignal(dict)  # 文件替换信号
@@ -31,7 +38,22 @@ class FileSelectorDialog(QDialog):
             asset_path: 资源包路径
             parent: 父窗口
         """
-        super().__init__(parent)
+        super().__init__()  # 恢复parent参数，以保持主题同步
+        # 设置窗口标志，使其显示在任务栏中
+        self.setWindowFlags(Qt.WindowType.Window | 
+                          Qt.WindowType.WindowCloseButtonHint | 
+                          Qt.WindowType.WindowMinimizeButtonHint | 
+                          Qt.WindowType.WindowMaximizeButtonHint)
+        
+        # 设置窗口属性
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)  # 关闭时自动删除
+        self.setWindowModality(Qt.WindowModality.NonModal)  # 设置为非模态窗口
+        
+        # 设置应用图标
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resource", "icon.webp")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        
         self.asset_path = asset_path
         self.files = files  # 存储所有文件信息
         self.replace_files = {}  # 存储替换文件信息
@@ -43,41 +65,57 @@ class FileSelectorDialog(QDialog):
         self.main_window = parent
         self.theme = False
         self.logger = logging.getLogger(__name__)
+        self.theme_manager = ThemeManager()  # 创建主题管理器实例
+        self.preview_manager = PreviewManager()  # 创建预览管理器实例
+        self.config = ConfigManager()  # 创建配置管理器实例
+        # self.main_window = parent  # 保存父窗口引用
+
+        # 获取主屏幕
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+
+        # 计算窗口大小（使用屏幕宽度的60%和高度的70%）
+        window_width = int(screen_geometry.width() * 0.45)
+        window_height = int(screen_geometry.height() * 0.5)
+
+        # 设置最小窗口大小（屏幕宽度的40%和高度的50%）
+        min_width = int(screen_geometry.width() * 0.3)
+        min_height = int(screen_geometry.height() * 0.4)
+        min_width = max(screen_geometry.width() * 0.3, 700)  # 限制最大宽度
+
+        self.setMinimumSize(int(min_width), min_height)
+
+        # 设置初始窗口大小
+        self.resize(window_width, window_height)
 
         # 设置窗口标题为资源路径
         self.setWindowTitle(f"资源包: {os.path.basename(asset_path)}")
-        self.setMinimumSize(900, 600)
 
         # 初始化UI组件
         self.setup_ui()
+
 
         # 加载文件列表
         self.load_files()
 
         # 初始化主题
-        self.last_theme_is_dark = self.is_dark_mode()
+        self.last_theme_is_dark = self.theme_manager.is_dark_mode(self)
         self.update_theme()
 
         # 创建定时器来检查系统主题变化
         self.theme_check_timer = QTimer(self)
         self.theme_check_timer.timeout.connect(self.check_theme_change)
         self.theme_check_timer.start(10)  # 每秒检查一次
+        self.json_highlighter = JsonHighlighter(self.preview_text.document())
 
     def is_dark_mode(self):
         """检测系统是否处于深色模式"""
-        try:
-            palette = self.palette()
-            # print("当前file调色板:", palette.window().color().lightness())
-
-            return palette.window().color().lightness() < 128
-        except Exception as e:
-            self.logger.error(f"检测主题模式时出错: {str(e)}")
-            return False
+        return self.theme_manager.is_dark_mode(self)
 
     def check_theme_change(self):
         """检查系统主题是否发生变化"""
         try:
-            current_is_dark = self.is_dark_mode()
+            current_is_dark = self.theme_manager.is_dark_mode(self)
             if current_is_dark != self.last_theme_is_dark:
                 self.last_theme_is_dark = current_is_dark
                 self.update_theme()
@@ -87,595 +125,17 @@ class FileSelectorDialog(QDialog):
     def update_theme(self):
         """更新主题样式"""
         try:
-            is_dark = self.is_dark_mode()
+            is_dark = self.theme_manager.is_dark_mode(self)
             if is_dark:
-                self.apply_dark_theme()
+                self.theme_manager.apply_dark_theme(self)
             else:
-                self.apply_light_theme()
+                self.theme_manager.apply_light_theme(self)
+            
+            # 重新加载文件列表以更新表格项的颜色
+            if hasattr(self, 'file_table') and self.file_table is not None:
+                self.update_file_list()
         except Exception as e:
             self.logger.error(f"更新主题时出错: {str(e)}")
-
-    def apply_dark_theme(self):
-        """应用深色主题"""
-        try:
-            # 更新搜索框样式
-            if hasattr(self, 'search_input'):
-                self.search_input.setStyleSheet("""
-                    QLineEdit {
-                        padding: 5px;
-                        border: 1px solid #3c3c3c;
-                        border-radius: 4px;
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                    }
-                    QLineEdit:focus {
-                        border: 1px solid #4a86e8;
-                    }
-                """)
-
-            # 更新提示区域样式
-            if hasattr(self, 'tips_label'):
-                self.tips_label.setStyleSheet("""
-                    QLabel {
-                        color: #cccccc;
-                        font-size: 12px;
-                        padding: 5px;
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                        border-radius: 4px;
-                    }
-                """)
-
-            # 更新标题布局样式
-            if hasattr(self, 'title_layout'):
-                # 获取标题布局中的所有组件
-                for i in range(self.title_layout.count()):
-                    widget = self.title_layout.itemAt(i).widget()
-                    if isinstance(widget, QLabel):
-                        if widget.text() == "文件列表":
-                            widget.setStyleSheet("""
-                                QLabel {
-                                    color: #ffffff;
-                                    font-weight: bold;
-                                    font-size: 14px;
-                                }
-                            """)
-                        elif widget.text().startswith("搜索:"):
-                            widget.setStyleSheet("""
-                                QLabel {
-                                    color: #cccccc;
-                                    font-size: 12px;
-                                }
-                            """)
-
-            # 更新表格样式
-            if hasattr(self, 'file_table'):
-                self.file_table.setStyleSheet("""
-                    QTableWidget {
-                        background-color: #1e1e1e;
-                        border: 1px solid #3c3c3c;
-                        border-radius: 4px;
-                        gridline-color: #3c3c3c;
-                    }
-                    QTableWidget::item {
-                        padding: 5px;
-                        border-bottom: 1px solid #3c3c3c;
-                    }
-                    QTableWidget::item:selected {
-                        background-color: #3d3d3d;
-                    }
-                    QTableWidget::item:hover {
-                        background-color: #3d3d3d;
-                    }
-                    QHeaderView::section {
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        padding: 5px;
-                        border: 1px solid #3c3c3c;
-                        font-weight: bold;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #1e1e1e;
-                        width: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #3c3c3c;
-                        min-height: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #4c4c4c;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                    QScrollBar:horizontal {
-                        background-color: #1e1e1e;
-                        height: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:horizontal {
-                        background-color: #3c3c3c;
-                        min-width: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:horizontal:hover {
-                        background-color: #4c4c4c;
-                    }
-                    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                        width: 0px;
-                    }
-                    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                        background: none;
-                    }
-                """)
-
-            # 更新预览区域样式
-            if hasattr(self, 'image_preview'):
-                self.image_preview.setStyleSheet("""
-                    QLabel {
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                        border-radius: 4px;
-                        font-size: 14px;
-                        color: #cccccc;
-                    }
-                """)
-
-            # 更新滚动区域样式
-            if hasattr(self, 'scroll_area'):
-                self.scroll_area.setStyleSheet("""
-                    QScrollArea {
-                        border: none;
-                        background-color: #1e1e1e;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #1e1e1e;
-                        width: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #3c3c3c;
-                        min-height: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #4c4c4c;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                    QScrollBar:horizontal {
-                        background-color: #1e1e1e;
-                        height: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:horizontal {
-                        background-color: #3c3c3c;
-                        min-width: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:horizontal:hover {
-                        background-color: #4c4c4c;
-                    }
-                    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                        width: 0px;
-                    }
-                    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                        background: none;
-                    }
-                """)
-
-            # 更新图片信息标签样式
-            if hasattr(self, 'image_info_label'):
-                self.image_info_label.setStyleSheet("""
-                    QLabel {
-                        background-color: #2d2d2d;
-                        color: #f8f9fa;
-                        border: 1px solid #3c3c3c;
-                        padding: 8px;
-                        margin-bottom: 8px;
-                        border-radius: 4px;
-                        font-size: 12px;
-                    }
-                """)
-
-            # 更新按钮样式
-            if hasattr(self, 'select_all_btn'):
-                self.select_all_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        border: 1px solid #3c3c3c;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d3d3d;
-                        border: 1px solid #4c4c4c;
-                    }
-                    QPushButton:pressed {
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                    }
-                """)
-
-            if hasattr(self, 'deselect_all_btn'):
-                self.deselect_all_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        border: 1px solid #3c3c3c;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d3d3d;
-                        border: 1px solid #4c4c4c;
-                    }
-                    QPushButton:pressed {
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                    }
-                """)
-
-            if hasattr(self, 'export_ab_btn'):
-                self.export_ab_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        border: 1px solid #3c3c3c;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d3d3d;
-                        border: 1px solid #4c4c4c;
-                    }
-                    QPushButton:pressed {
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                    }
-                    QPushButton:disabled {
-                        background-color: #1a1a1a;
-                        color: #666666;
-                        border: 1px solid #2c2c2c;
-                    }
-                """)
-            if hasattr(self, 'export_lab_btn'):
-                self.export_lab_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        border: 1px solid #3c3c3c;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d3d3d;
-                        border: 1px solid #4c4c4c;
-                    }
-                    QPushButton:pressed {
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                    }
-                    QPushButton:disabled {
-                        background-color: #1a1a1a;
-                        color: #666666;
-                        border: 1px solid #2c2c2c;
-                    }
-                """)
-
-
-            if hasattr(self, 'confirm_btn'):
-                self.confirm_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        border: 1px solid #3c3c3c;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3d3d3d;
-                        border: 1px solid #4c4c4c;
-                    }
-                    QPushButton:pressed {
-                        background-color: #2d2d2d;
-                        border: 1px solid #3c3c3c;
-                    }
-                    QPushButton:disabled {
-                        background-color: #1a1a1a;
-                        color: #666666;
-                        border: 1px solid #2c2c2c;
-                    }
-                """)
-        except Exception as e:
-            self.logger.error(f"应用深色主题时出错: {str(e)}")
-
-    def apply_light_theme(self):
-        """应用浅色主题"""
-        try:
-            # 更新搜索框样式
-            if hasattr(self, 'search_input'):
-                self.search_input.setStyleSheet("""
-                    QLineEdit {
-                        padding: 5px;
-                        border: 1px solid #cccccc;
-                        border-radius: 4px;
-                        background-color: white;
-                    }
-                    QLineEdit:focus {
-                        border: 1px solid #4a86e8;
-                    }
-                """)
-
-            # 更新提示区域样式
-            if hasattr(self, 'tips_label'):
-                self.tips_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 12px;
-                        padding: 5px;
-                        background-color: #f8f9fa;
-                        border: 1px solid #e9ecef;
-                        border-radius: 4px;
-                    }
-                """)
-
-            # 更新表格样式
-            if hasattr(self, 'file_table'):
-                self.file_table.setStyleSheet("""
-                    QTableWidget {
-                        border: 1px solid #cccccc;
-                        border-radius: 4px;
-                        background-color: white;
-                    }
-                    QTableWidget::item {
-                        padding: 5px;
-                        border-bottom: 1px solid #eeeeee;
-                    }
-                    QTableWidget::item:selected {
-                        background-color: #e6f3ff;
-                        color: #0066cc;
-                    }
-                    QTableWidget::item:hover {
-                        background-color: #f5f5f5;
-                    }
-                    QHeaderView::section {
-                        background-color: #f8f9fa;
-                        padding: 5px;
-                        border: 1px solid #dee2e6;
-                        font-weight: bold;
-                    }
-                    QHeaderView::section:checked {
-                        background-color: #e6f3ff;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #f8f9fa;
-                        width: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #dee2e6;
-                        min-height: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #ced4da;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                    QScrollBar:horizontal {
-                        background-color: #f8f9fa;
-                        height: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:horizontal {
-                        background-color: #dee2e6;
-                        min-width: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:horizontal:hover {
-                        background-color: #ced4da;
-                    }
-                    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                        width: 0px;
-                    }
-                    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                        background: none;
-                    }
-                """)
-
-            # 更新预览区域样式
-            if hasattr(self, 'image_preview'):
-                self.image_preview.setStyleSheet("""
-                    QLabel {
-                        background-color: #f8f8f8;
-                        border: 1px solid #dddddd;
-                        border-radius: 4px;
-                        font-size: 14px;
-                        color: #666666;
-                    }
-                """)
-
-            # 更新滚动区域样式
-            if hasattr(self, 'scroll_area'):
-                self.scroll_area.setStyleSheet("""
-                    QScrollArea {
-                        border: none;
-                        background-color: #f8f8f8;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #f8f9fa;
-                        width: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #dee2e6;
-                        min-height: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #ced4da;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                    QScrollBar:horizontal {
-                        background-color: #f8f9fa;
-                        height: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:horizontal {
-                        background-color: #dee2e6;
-                        min-width: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:horizontal:hover {
-                        background-color: #ced4da;
-                    }
-                    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                        width: 0px;
-                    }
-                    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                        background: none;
-                    }
-                """)
-
-            # 更新图片信息标签样式
-            if hasattr(self, 'image_info_label'):
-                self.image_info_label.setStyleSheet("""
-                    QLabel {
-                        background-color: #f8f8f8;
-                        color: #666666;
-                        padding: 8px;
-                        margin-bottom: 8px;
-                        border: 1px solid #dddddd;
-                        border-radius: 4px;
-                        font-size: 12px;
-                    }
-                """)
-
-            # 更新按钮样式
-            if hasattr(self, 'select_all_btn'):
-                self.select_all_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #4a86e8;
-                        color: white;
-                        border: none;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #3a76d8;
-                    }
-                """)
-
-            if hasattr(self, 'deselect_all_btn'):
-                self.deselect_all_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #6c757d;
-                        color: white;
-                        border: none;
-                        padding: 5px 10px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #5a6268;
-                    }
-                """)
-
-            if hasattr(self, 'export_ab_btn'):
-                self.export_ab_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #28a745;
-                        color: white;
-                        border: none;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #218838;
-                    }
-                    QPushButton:pressed {
-                        background-color: #1e7e34;
-                    }
-                    QPushButton:disabled {
-                        background-color: #cccccc;
-                    }
-                """)
-            if hasattr(self, 'export_lab_btn'):
-                self.export_lab_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #28a745;
-                        color: white;
-                        border: none;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #218838;
-                    }
-                    QPushButton:pressed {
-                        background-color: #1e7e34;
-                    }
-                    QPushButton:disabled {
-                        background-color: #cccccc;
-                    }
-                """)
-
-            if hasattr(self, 'confirm_btn'):
-                self.confirm_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #28a745;
-                        color: white;
-                        border: none;
-                        padding: 8px 15px;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #218838;
-                    }
-                    QPushButton:pressed {
-                        background-color: #1e7e34;
-                    }
-                    QPushButton:disabled {
-                        background-color: #cccccc;
-                    }
-                """)
-        except Exception as e:
-            self.logger.error(f"应用浅色主题时出错: {str(e)}")
 
     def setup_ui(self):
         """设置用户界面"""
@@ -773,75 +233,75 @@ class FileSelectorDialog(QDialog):
         self.file_table.setHorizontalHeaderLabels(["名称", "类型", "路径ID", "大小"])
 
         # 设置表格样式
-        self.file_table.setStyleSheet("""
-            QTableWidget {
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QTableWidget::item {
-                padding: 5px;
-                border-bottom: 1px solid #eeeeee;
-            }
-            QTableWidget::item:selected {
-                background-color: #e6f3ff;
-                color: #0066cc;
-            }
-            QTableWidget::item:hover {
-                background-color: #f5f5f5;
-            }
-            QHeaderView::section {
-                background-color: #f8f9fa;
-                padding: 5px;
-                border: 1px solid #dee2e6;
-                font-weight: bold;
-            }
-            QHeaderView::section:checked {
-                background-color: #e6f3ff;
-            }
-            QScrollBar:vertical {
-                background-color: #f8f9fa;
-                width: 12px;
-                margin: 0px;
-                border: none;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #dee2e6;
-                min-height: 30px;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #ced4da;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-            QScrollBar:horizontal {
-                background-color: #f8f9fa;
-                height: 12px;
-                margin: 0px;
-                border: none;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #dee2e6;
-                min-width: 30px;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #ced4da;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                background: none;
-            }
-        """)
+        # self.file_table.setStyleSheet("""
+        #     QTableWidget {
+        #         border: 1px solid #cccccc;
+        #         border-radius: 4px;
+        #         background-color: white;
+        #     }
+        #     QTableWidget::item {
+        #         padding: 5px;
+        #         border-bottom: 1px solid #eeeeee;
+        #     }
+        #     QTableWidget::item:selected {
+        #         background-color: #e6f3ff;
+        #         color: #0066cc;
+        #     }
+        #     QTableWidget::item:hover {
+        #         background-color: #f5f5f5;
+        #     }
+        #     QHeaderView::section {
+        #         background-color: #f8f9fa;
+        #         padding: 5px;
+        #         border: 1px solid #dee2e6;
+        #         font-weight: bold;
+        #     }
+        #     QHeaderView::section:checked {
+        #         background-color: #e6f3ff;
+        #     }
+        #     QScrollBar:vertical {
+        #         background-color: #f8f9fa;
+        #         width: 12px;
+        #         margin: 0px;
+        #         border: none;
+        #     }
+        #     QScrollBar::handle:vertical {
+        #         background-color: #dee2e6;
+        #         min-height: 30px;
+        #         border-radius: 6px;
+        #         margin: 2px;
+        #     }
+        #     QScrollBar::handle:vertical:hover {
+        #         background-color: #ced4da;
+        #     }
+        #     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        #         height: 0px;
+        #     }
+        #     QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+        #         background: none;
+        #     }
+        #     QScrollBar:horizontal {
+        #         background-color: #f8f9fa;
+        #         height: 12px;
+        #         margin: 0px;
+        #         border: none;
+        #     }
+        #     QScrollBar::handle:horizontal {
+        #         background-color: #dee2e6;
+        #         min-width: 30px;
+        #         border-radius: 6px;
+        #         margin: 2px;
+        #     }
+        #     QScrollBar::handle:horizontal:hover {
+        #         background-color: #ced4da;
+        #     }
+        #     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+        #         width: 0px;
+        #     }
+        #     QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+        #         background: none;
+        #     }
+        # """)
 
         # 设置表格属性
         self.file_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -890,33 +350,33 @@ class FileSelectorDialog(QDialog):
         select_buttons_layout = QHBoxLayout()
         self.select_all_btn = QPushButton("全选")
         self.select_all_btn.clicked.connect(self.select_all_files)
-        self.select_all_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4a86e8;
-                color: white;
-                border: none;
-                padding: 5px 10px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #3a76d8;
-            }
-        """)
+        # self.select_all_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background-color: #4a86e8;
+        #         color: white;
+        #         border: none;
+        #         padding: 5px 10px;
+        #         border-radius: 4px;
+        #     }
+        #     QPushButton:hover {
+        #         background-color: #3a76d8;
+        #     }
+        # """)
 
         self.deselect_all_btn = QPushButton("取消全选")
         self.deselect_all_btn.clicked.connect(self.deselect_all_files)
-        self.deselect_all_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #6c757d;
-                color: white;
-                border: none;
-                padding: 5px 10px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #5a6268;
-            }
-        """)
+        # self.deselect_all_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background-color: #6c757d;
+        #         color: white;
+        #         border: none;
+        #         padding: 5px 10px;
+        #         border-radius: 4px;
+        #     }
+        #     QPushButton:hover {
+        #         background-color: #5a6268;
+        #     }
+        # """)
 
         select_buttons_layout.addWidget(self.select_all_btn)
         select_buttons_layout.addWidget(self.deselect_all_btn)
@@ -927,61 +387,13 @@ class FileSelectorDialog(QDialog):
         # 右侧预览区域
         preview_frame = QFrame()
         preview_frame.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Sunken)
-        preview_layout = QVBoxLayout(preview_frame)
+        self.preview_layout = QVBoxLayout(preview_frame)  # 创建预览布局
 
         # 创建滚动区域
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: #f8f8f8;
-            }
-            QScrollBar:vertical {
-                background-color: #f8f9fa;
-                width: 12px;
-                margin: 0px;
-                border: none;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #dee2e6;
-                min-height: 30px;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #ced4da;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-            QScrollBar:horizontal {
-                background-color: #f8f9fa;
-                height: 12px;
-                margin: 0px;
-                border: none;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #dee2e6;
-                min-width: 30px;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #ced4da;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                background: none;
-            }
-        """)
 
         # 创建预览容器
         preview_container = QWidget()
@@ -991,36 +403,34 @@ class FileSelectorDialog(QDialog):
 
         # 添加图片信息标签
         self.image_info_label = QLabel()
-        self.image_info_label.setStyleSheet("""
-            QLabel {
-                background-color: rgba(255, 255, 255, 0.95);
-                color: #333333;
-                padding: 8px;
-                margin-bottom: 5px;
-                border-radius: 4px;
-                font-size: 12px;
-            }
-        """)
+        # self.image_info_label.setStyleSheet("""
+        #     QLabel {
+        #         background-color: rgba(255, 255, 255, 0.95);
+        #         color: #333333;
+        #         padding: 8px;
+        #         margin-bottom: 5px;
+        #         border-radius: 4px;
+        #         font-size: 12px;
+        #     }
+        # """)
         self.image_info_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.image_info_label.setWordWrap(True)
         self.image_info_label.setVisible(False)
-        # 设置为固定高度
-
         preview_container_layout.addWidget(self.image_info_label)
 
         # 图片预览
         self.image_preview = QLabel()
         self.image_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_preview.setMinimumSize(400, 400)
-        self.image_preview.setStyleSheet("""
-            QLabel {
-                background-color: #f8f8f8;
-                border: 1px solid #dddddd;
-                border-radius: 4px;
-                font-size: 14px;
-                color: #666666;
-            }
-        """)
+        # self.image_preview.setStyleSheet("""
+        #     QLabel {
+        #         background-color: #f8f8f8;
+        #         border: 1px solid #dddddd;
+        #         border-radius: 4px;
+        #         font-size: 14px;
+        #         color: #666666;
+        #     }
+        # """)
         self.image_preview.setText("请选择要处理的文件\n\n"
                                    "提示：\n"
                                    "• 预览仅支持文本、图片、音频\n"
@@ -1035,14 +445,52 @@ class FileSelectorDialog(QDialog):
         self.image_preview.customContextMenuRequested.connect(self.show_preview_context_menu)
         preview_container_layout.addWidget(self.image_preview)
 
-        # 设置滚动区域的widget
-        self.scroll_area.setWidget(preview_container)
-        preview_layout.addWidget(self.scroll_area)
+        # 文本预览
+        self.preview_text = QTextEdit()
+        self.preview_text.setReadOnly(True)
+        self.preview_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.preview_text.setFont(QFont("Consolas", 10))
+        self.preview_text.setVisible(False)
+        # self.preview_text.setStyleSheet("""
+        #     QTextEdit {
+        #         background-color: #f8f9fa;
+        #         color: #333333;
+        #         border: 1px solid #cccccc;
+        #         border-radius: 4px;
+        #         padding: 8px;
+        #     }
+        # """)
+        # 应用JSON语法高亮
 
-        # 音频预览控件
+        preview_container_layout.addWidget(self.preview_text)
+
+        # 编辑和保存按钮容器
+        self.edit_buttons_container = QWidget()
+        edit_buttons_layout = QHBoxLayout(self.edit_buttons_container)
+        edit_buttons_layout.setContentsMargins(0, 5, 0, 0)
+
+        # 添加编辑按钮
+        self.edit_btn = QPushButton("编辑")
+        self.edit_btn.clicked.connect(self.toggle_edit_mode)
+        self.edit_btn.setVisible(False)
+
+        # 添加保存按钮
+        self.save_btn = QPushButton("保存")
+        self.save_btn.clicked.connect(self.save_json_content)
+        self.save_btn.setVisible(False)
+
+        edit_buttons_layout.addWidget(self.edit_btn)
+        edit_buttons_layout.addWidget(self.save_btn)
+        edit_buttons_layout.addStretch()
+
+        preview_container_layout.addWidget(self.edit_buttons_container)
+
+        # 音频预览
         self.audio_preview = QFrame()
-        self.audio_preview.setVisible(False)  # 初始隐藏
+        self.audio_preview.setVisible(False)
         audio_layout = QVBoxLayout(self.audio_preview)
+        audio_layout.setSpacing(15)
+        audio_layout.setContentsMargins(20, 20, 20, 20)
 
         # 音频信息显示
         self.audio_info = QLabel()
@@ -1052,24 +500,27 @@ class FileSelectorDialog(QDialog):
                 color: #666666;
                 font-size: 14px;
                 padding: 10px;
+                background-color: rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
             }
         """)
         audio_layout.addWidget(self.audio_info)
 
         # 播放控制区域
         play_control_layout = QHBoxLayout()
-        play_control_layout.addStretch()
+        play_control_layout.setSpacing(20)
+        play_control_layout.setContentsMargins(0, 10, 0, 10)
 
         # 播放/暂停按钮
         self.play_button = QPushButton()
         self.play_button.setIcon(QIcon.fromTheme("media-playback-start"))
-        self.play_button.setFixedSize(60, 60)  # 增大按钮尺寸
+        self.play_button.setFixedSize(60, 60)
         self.play_button.setStyleSheet("""
             QPushButton {
                 background-color: #4a86e8;
                 color: white;
                 border: none;
-                border-radius: 30px;  /* 圆形按钮 */
+                border-radius: 30px;
                 padding: 0;
             }
             QPushButton:hover {
@@ -1078,8 +529,12 @@ class FileSelectorDialog(QDialog):
             QPushButton:pressed {
                 background-color: #2a66c8;
             }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
         """)
         self.play_button.clicked.connect(self.toggle_audio_playback)
+        play_control_layout.addStretch()
         play_control_layout.addWidget(self.play_button)
         play_control_layout.addStretch()
 
@@ -1087,6 +542,8 @@ class FileSelectorDialog(QDialog):
 
         # 进度条区域
         progress_layout = QHBoxLayout()
+        progress_layout.setSpacing(10)
+        progress_layout.setContentsMargins(0, 10, 0, 10)
 
         # 当前时间标签
         self.current_time = QLabel("00:00")
@@ -1095,6 +552,9 @@ class FileSelectorDialog(QDialog):
                 color: #666666;
                 font-size: 12px;
                 min-width: 50px;
+                padding: 0;
+                border: none;
+                background: transparent;
             }
         """)
         progress_layout.addWidget(self.current_time)
@@ -1113,6 +573,7 @@ class FileSelectorDialog(QDialog):
                 background: #4a86e8;
                 border: none;
                 width: 16px;
+                height: 16px;
                 margin: -4px 0;
                 border-radius: 8px;
             }
@@ -1138,12 +599,19 @@ class FileSelectorDialog(QDialog):
                 color: #666666;
                 font-size: 12px;
                 min-width: 50px;
+                padding: 0;
+                border: none;
+                background: transparent;
             }
         """)
         progress_layout.addWidget(self.total_time)
 
         audio_layout.addLayout(progress_layout)
-        preview_layout.addWidget(self.audio_preview)
+        preview_container_layout.addWidget(self.audio_preview)
+
+        # 设置滚动区域的widget
+        self.scroll_area.setWidget(preview_container)
+        self.preview_layout.addWidget(self.scroll_area)
 
         splitter.addWidget(preview_frame)
         layout.addWidget(splitter)
@@ -1245,6 +713,59 @@ class FileSelectorDialog(QDialog):
         self.position_update_timer.timeout.connect(self.update_position)
         self.is_dragging = False
 
+    def toggle_edit_mode(self):
+        """切换编辑模式"""
+        self.preview_manager.toggle_edit_mode(self)
+
+    def save_json_content(self):
+        """保存JSON内容"""
+        try:
+            content = self.preview_text.toPlainText()
+            # 验证JSON格式
+            json.loads(content)
+
+            # 获取当前选中的文件
+            selected_items = self.file_table.selectedItems()
+            if not selected_items:
+                return
+
+            item = selected_items[0]
+            file_info = item.data(Qt.ItemDataRole.UserRole + 1)
+            file_path = file_info[2]
+            # 写入文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            # file_info = self.get_file_info(item)
+            if not file_info:
+                return
+
+            # 保存到替换文件列表
+            self.replace_files[file_info] = file_path
+            self.update_file_list()
+            # 更新预览
+            self.update_preview(file_info[0], file_info[1], file_path)
+
+            # 切换回只读模式
+            self.preview_text.setReadOnly(True)
+            self.edit_btn.setText("编辑")
+            self.save_btn.setVisible(False)
+
+            # 更新导出按钮状态
+            self.export_ab_btn.setEnabled(True)
+            self.export_lab_btn.setEnabled(True)
+
+            QMessageBox.information(self, "成功", "JSON内容已保存")
+
+        except json.JSONDecodeError:
+            QMessageBox.warning(self, "错误", "无效的JSON格式")
+        except Exception as e:
+            self.logger.error(f"保存JSON内容时出错: {str(e)}")
+            QMessageBox.critical(self, "错误", f"保存失败: {str(e)}")
+
+    def update_preview(self, name, file_type, path):
+        """更新预览内容"""
+        self.preview_manager.update_preview(name, file_type, path, self)
+
     def load_files(self):
         """加载文件列表"""
         try:
@@ -1274,7 +795,7 @@ class FileSelectorDialog(QDialog):
         for file in self.files:
             # 检查文件类型和搜索文本
             if (self.current_type == "All" or file["type"] == self.current_type) and \
-               (not search_text or search_text in file["name"].lower()):
+                    (not search_text or search_text in file["name"].lower()):
                 row = self.file_table.rowCount()
                 self.file_table.insertRow(row)
 
@@ -1283,10 +804,8 @@ class FileSelectorDialog(QDialog):
                 type_item = QTableWidgetItem(file["type"])
                 path_id_item = QTableWidgetItem(str(file["path_id"]))
 
-                # 大小列：使用原始大小值作为排序数据，格式化大小作为显示数据
-                size_item = QTableWidgetItem()
-                size_item.setData(Qt.ItemDataRole.UserRole, file["size"])  # 存储原始大小值用于排序
-                size_item.setText(self.format_file_size(file["size"]))  # 设置显示文本
+                # 大小列：使用自定义排序项
+                size_item = FileSizeItem(self.format_file_size(file["size"]), file["size"])
 
                 # 存储完整文件信息
                 file_info = (file["name"], file["type"], file["path"])
@@ -1302,7 +821,7 @@ class FileSelectorDialog(QDialog):
 
                 name_item.setToolTip(tooltip)
                 type_item.setToolTip(tooltip)
-                path_id_item.setToolTip(tooltip)
+                type_item.setToolTip(tooltip)
                 size_item.setToolTip(tooltip)
 
                 # 添加到表格
@@ -1322,6 +841,17 @@ class FileSelectorDialog(QDialog):
                             else:
                                 item.setBackground(QBrush(QColor("#e8f5e9")))  # 浅色主题下的浅绿色背景
                                 item.setForeground(QBrush(QColor("#2e7d32")))
+                else:
+                    # 为普通文件设置默认颜色，避免在某些系统上出现白色背景
+                    for col in range(self.file_table.columnCount()):
+                        item = self.file_table.item(row, col)
+                        if item:
+                            if self.is_dark_mode():
+                                item.setBackground(QBrush(QColor("#1e1e1e")))  # 深色主题下的深色背景
+                                item.setForeground(QBrush(QColor("#ffffff")))  # 深色主题下的白色文本
+                            else:
+                                item.setBackground(QBrush(QColor("#ffffff")))  # 浅色主题下的白色背景
+                                item.setForeground(QBrush(QColor("#000000")))  # 浅色主题下的黑色文本
 
         # 恢复排序状态
         self.file_table.setSortingEnabled(True)
@@ -1347,192 +877,6 @@ class FileSelectorDialog(QDialog):
             self.logger.error(f"更新预览时出错: {str(e)}")
             self.image_preview.setText(f"预览出错: {str(e)}")
 
-    def update_preview(self, name: str, file_type: str, path: str):
-        """更新预览"""
-        try:
-            # 检查是否有替换文件
-            if (name, file_type, path) in self.replace_files:
-                path = self.replace_files[(name, file_type, path)]
-
-            # 默认隐藏图片信息标签
-            self.image_info_label.setVisible(False)
-            self.image_info_label.setFixedHeight(90)
-
-
-            if file_type == "Texture2D":
-                # 显示图片预览
-                self.image_preview.setVisible(True)
-                self.audio_preview.setVisible(False)
-                self.image_info_label.setVisible(True)
-
-                # 加载图片
-                pixmap = QPixmap(path)
-                if not pixmap.isNull():
-                    # 获取图片信息
-                    image = QImage(path)
-                    width = image.width()
-                    height = image.height()
-                    format = image.format()
-                    depth = image.depth()
-                    file_size = os.path.getsize(path)
-
-                    # 计算文件大小显示
-                    size_str = self.format_file_size(file_size)
-
-                    # 获取色彩空间信息
-                    color_space = "RGB" if format in [QImage.Format.Format_RGB32, QImage.Format.Format_ARGB32] else "RGBA"
-
-                    # 设置图片信息文本
-                    info_text = f"文件名: {name}\n"
-                    info_text += f"分辨率: {width}x{height}\n"
-                    info_text += f"文件大小: {size_str}\n"
-                    info_text += f"色彩深度: {depth}位\n"
-                    info_text += f"色彩空间: {color_space}\n"
-                    info_text += f"格式: {format}"
-
-                    self.image_info_label.setText(info_text)
-                    # 设置固定高度
-                    self.image_info_label.setFixedHeight(125)
-
-                    # 缩放图片以适应预览区域
-                    scaled_pixmap = pixmap.scaled(
-                        self.image_preview.size(),
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation
-                    )
-                    self.image_preview.setPixmap(scaled_pixmap)
-                else:
-                    self.image_preview.setText("无法加载图片")
-                    self.image_info_label.setVisible(False)
-
-            elif file_type == "TextAsset":
-                # 显示文本预览
-                self.image_preview.setVisible(True)
-                self.audio_preview.setVisible(False)
-                self.image_info_label.setVisible(True)
-
-                # 获取文件信息
-                file_size = os.path.getsize(path)
-                size_str = self.format_file_size(file_size)
-
-                # 读取文件内容
-                with open(path, "r", encoding="utf-8", errors='surrogateescape') as f:
-                    text = f.read()
-
-                # 设置文件信息
-                info_text = f"文件名: {name}\n"
-                info_text += f"类型: TextAsset\n"
-                info_text += f"文件大小: {size_str}\n"
-                info_text += f"编码: UTF-8"
-
-                self.image_info_label.setText(info_text)
-                self.image_preview.setText(text)
-
-            elif file_type == "MonoBehaviour":
-                # 显示文本预览
-                self.image_preview.setVisible(True)
-                self.audio_preview.setVisible(False)
-                self.image_info_label.setVisible(True)
-
-                # 获取文件信息
-                file_size = os.path.getsize(path)
-                size_str = self.format_file_size(file_size)
-
-                # 读取文件内容
-                with open(path, "r", encoding="utf-8", errors='surrogateescape') as f:
-                    text = f.read()
-
-                # 设置文件信息
-                info_text = f"文件名: {name}\n"
-                info_text += f"类型: MonoBehaviour\n"
-                info_text += f"文件大小: {size_str}\n"
-                info_text += f"编码: UTF-8"
-
-                self.image_info_label.setText(info_text)
-                self.image_preview.setText(text)
-
-            elif file_type == "AudioClip":
-                # 显示音频预览
-                self.image_preview.setVisible(False)
-                self.audio_preview.setVisible(True)
-                self.image_info_label.setVisible(True)
-
-                # 获取文件信息
-                file_size = os.path.getsize(path)
-                size_str = self.format_file_size(file_size)
-
-                # 设置文件信息
-                info_text = f"文件名: {name}\n"
-                info_text += f"类型: AudioClip\n"
-                info_text += f"文件大小: {size_str}"
-
-                self.image_info_label.setText(info_text)
-                self.audio_info.setText(f"音频文件: {name}")
-                self.media_player.setSource(QUrl.fromLocalFile(path))
-                self.audio_progress.setValue(0)
-                self.update_play_button(QMediaPlayer.PlaybackState.StoppedState)
-                self.position_update_timer.start()  # 开始定时更新
-
-            elif file_type == "Mesh":
-                # 显示网格信息
-                self.image_preview.setVisible(True)
-                self.audio_preview.setVisible(False)
-                self.image_info_label.setVisible(True)
-
-                # 获取文件信息
-                file_size = os.path.getsize(path)
-                size_str = self.format_file_size(file_size)
-
-                # 设置文件信息
-                info_text = f"文件名: {name}\n"
-                info_text += f"类型: Mesh\n"
-                info_text += f"文件大小: {size_str}\n"
-                info_text += f"格式: OBJ"
-
-                self.image_info_label.setText(info_text)
-                self.image_preview.setText(f"网格文件: {name}\n格式: OBJ")
-
-            elif file_type == "Material":
-                # 显示材质信息
-                self.image_preview.setVisible(True)
-                self.audio_preview.setVisible(False)
-                self.image_info_label.setVisible(True)
-
-                # 获取文件信息
-                file_size = os.path.getsize(path)
-                size_str = self.format_file_size(file_size)
-
-                # 设置文件信息
-                info_text = f"文件名: {name}\n"
-                info_text += f"类型: Material\n"
-                info_text += f"文件大小: {size_str}\n"
-                info_text += f"格式: MAT"
-
-                self.image_info_label.setText(info_text)
-                self.image_preview.setText(f"材质文件: {name}\n格式: MAT")
-
-            else:
-                # 显示其他类型文件信息
-                self.image_preview.setVisible(True)
-                self.audio_preview.setVisible(False)
-                self.image_info_label.setVisible(True)
-
-                # 获取文件信息
-                file_size = os.path.getsize(path)
-                size_str = self.format_file_size(file_size)
-
-                # 设置文件信息
-                info_text = f"文件名: {name}\n"
-                info_text += f"类型: {file_type}\n"
-                info_text += f"文件大小: {size_str}"
-
-                self.image_info_label.setText(info_text)
-                self.image_preview.setText(f"文件: {name}\n类型: {file_type}")
-        except Exception as e:
-            self.logger.error(f"更新预览时出错: {str(e)}")
-            self.image_preview.setText(f"预览出错: {str(e)}")
-            self.image_info_label.setVisible(False)
-
     def select_all_files(self):
         """全选文件"""
         self.file_table.selectAll()
@@ -1549,11 +893,20 @@ class FileSelectorDialog(QDialog):
             # 添加替换文件选项
             replace_action = menu.addAction("替换此文件")
             replace_action.triggered.connect(lambda: self.replace_file(item.data(Qt.ItemDataRole.UserRole + 1)))
-            
+
             # 添加打开文件所在位置选项
             open_location_action = menu.addAction("打开文件所在位置")
             open_location_action.triggered.connect(lambda: self.open_file_location(item.data(Qt.ItemDataRole.UserRole + 1)))
-            
+
+            # 获取文件信息
+            file_info = item.data(Qt.ItemDataRole.UserRole + 1)
+            if isinstance(file_info, tuple) and len(file_info) == 3:
+                name, file_type, path = file_info
+                # 如果是图片类型，添加导出直通图片选项
+                if file_type == "Texture2D":
+                    export_action = menu.addAction("导出直通图片")
+                    export_action.triggered.connect(lambda: self.export_image(file_info))
+
             menu.exec(self.file_table.mapToGlobal(position))
 
     def open_file_location(self, file_info):
@@ -1561,12 +914,12 @@ class FileSelectorDialog(QDialog):
         try:
             if not file_info or not isinstance(file_info, tuple) or len(file_info) != 3:
                 return
-                
+
             name, file_type, path = file_info
             # 检查是否有替换文件
             if file_info in self.replace_files:
                 path = self.replace_files[file_info]
-                
+
             if os.path.exists(path):
                 # 获取文件所在目录
                 folder_path = os.path.dirname(path)
@@ -1635,8 +988,12 @@ class FileSelectorDialog(QDialog):
                     for col in range(self.file_table.columnCount()):
                         item = self.file_table.item(row, col)
                         if item:
-                            item.setBackground(QBrush(QColor("#e8f5e9")))  # 浅绿色背景
-                            item.setForeground(QBrush(QColor("#2e7d32")))  # 深绿色文本
+                            if self.is_dark_mode():
+                                item.setBackground(QBrush(QColor("#1a3a1a")))  # 深色主题下的深绿色背景
+                                item.setForeground(QBrush(QColor("#4caf50")))  # 深色主题下的亮绿色文本
+                            else:
+                                item.setBackground(QBrush(QColor("#e8f5e9")))  # 浅色主题下的浅绿色背景
+                                item.setForeground(QBrush(QColor("#2e7d32")))  # 浅色主题下的深绿色文本
                     break
 
             QMessageBox.information(self, "成功", f"文件 {name} 已标记为替换")
@@ -1651,15 +1008,23 @@ class FileSelectorDialog(QDialog):
                 QMessageBox.warning(self, "警告", "没有要导出的替换文件！")
                 return
 
-            # 选择输出目录
+            # 选择输出目录（使用配置的默认目录）
+            default_dir = self.config.get('ab_export_default_dir', '')
+            if not default_dir:
+                # 如果没有配置默认目录，使用上次选择的目录或用户主目录
+                default_dir = self.config.get('last_output_dir', '') or os.path.expanduser("~")
+            
             output_dir = QFileDialog.getExistingDirectory(
                 self,
                 "选择输出目录",
-                ""
+                default_dir
             )
 
             if not output_dir:
                 return
+            
+            # 保存最后使用的目录
+            self.config.set('last_output_dir', output_dir)
 
             # 发送导出信号
             try:
@@ -1696,6 +1061,7 @@ class FileSelectorDialog(QDialog):
         except Exception as e:
             self.logger.error(f"导出实验室MOD时出错: {str(e)}")
             QMessageBox.critical(self, "错误", f"导出实验室MOD失败: {str(e)}")
+
     def on_selection_changed(self):
         """当选择改变时"""
         try:
@@ -1704,12 +1070,12 @@ class FileSelectorDialog(QDialog):
                 # 获取选中行的第一个单元格
                 item = selected_items[0]
                 self.on_file_clicked(item)
-            else:
-                # 未选择时显示提示
-                self.image_preview.setText("请选择要处理的文件\n\n"
-                                           "操作提示：\n"
-                                           "• 右键点击可替换当前文件\n"
-                                           "• 已替换的文件将显示为绿色")
+            # else:
+            #     # 未选择时显示提示
+            #     self.image_preview.setText("请选择要处理的文件\n\n"
+            #                                "操作提示：\n"
+            #                                "• 右键点击可替换当前文件\n"
+            #                                "• 已替换的文件将显示为绿色")
         except Exception as e:
             self.logger.error(f"选择改变时出错: {str(e)}")
             self.image_preview.setText(f"选择出错: {str(e)}")
@@ -1744,13 +1110,20 @@ class FileSelectorDialog(QDialog):
                 QMessageBox.warning(self, "警告", "没有有效的文件被选中！")
                 return
 
-            # 选择保存目录
+            # 选择保存目录（使用配置的默认目录）
+            default_dir = self.config.get('ab_export_default_dir', '')
+            if not default_dir:
+                default_dir = self.config.get('last_output_dir', '') or os.path.expanduser("~")
+            
             save_dir = QFileDialog.getExistingDirectory(
                 self,
                 "选择保存目录",
-                "",
+                default_dir,
                 QFileDialog.Option.ShowDirsOnly
             )
+            
+            if save_dir:
+                self.config.set('last_output_dir', save_dir)
 
             if not save_dir:
                 return
@@ -1787,7 +1160,7 @@ class FileSelectorDialog(QDialog):
                             # 截取文件后缀
                             file_ext = os.path.splitext(file_name)[1]
                             # 替换文件后缀
-                            target_path = os.path.join(type_dir, f"{name}{file_ext}")
+                            target_path = os.path.join(type_dir, file_name)
 
                             # 复制文件
                             shutil.copy2(path, target_path)
@@ -1810,35 +1183,19 @@ class FileSelectorDialog(QDialog):
 
     def toggle_audio_playback(self):
         """切换音频播放状态"""
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.media_player.pause()
-            self.position_update_timer.stop()
-        else:
-            self.media_player.play()
-            self.position_update_timer.start()
+        self.preview_manager.toggle_audio_playback()
 
     def update_audio_progress(self, position):
         """更新音频进度条"""
-        if not self.is_dragging and self.media_player.duration() > 0:
-            self.last_position = position
-            progress = int((position / self.media_player.duration()) * 100)
-            self.audio_progress.setValue(progress)
-            self.current_time.setText(self.format_time(position))
+        self.preview_manager.update_audio_progress(position)
 
     def update_audio_duration(self, duration):
         """更新音频总时长"""
-        self.audio_progress.setMaximum(100)
-        # 更新总时长
-        self.total_time.setText(self.format_time(duration))
+        self.preview_manager.update_audio_duration(duration)
 
     def update_play_button(self, state):
         """更新播放按钮状态"""
-        if state == QMediaPlayer.PlaybackState.PlayingState:
-            self.play_button.setIcon(QIcon.fromTheme("media-playback-pause"))
-            self.position_update_timer.start()
-        else:
-            self.play_button.setIcon(QIcon.fromTheme("media-playback-start"))
-            self.position_update_timer.stop()
+        self.preview_manager.update_play_button(state)
 
     def handle_media_error(self, error, error_string):
         """处理媒体错误"""
@@ -1847,27 +1204,19 @@ class FileSelectorDialog(QDialog):
 
     def update_position(self):
         """定时更新位置"""
-        if not self.is_dragging and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.update_audio_progress(self.media_player.position())
+        self.preview_manager.update_position()
 
     def on_progress_changed(self, value):
         """处理进度条值改变"""
-        if self.media_player.duration() > 0 and self.is_dragging:
-            position = int((value / 100) * self.media_player.duration())
-            self.media_player.setPosition(position)
-            self.current_time.setText(self.format_time(position))
+        self.preview_manager.on_progress_changed(value)
 
     def on_progress_slider_pressed(self):
         """进度条按下时"""
-        self.is_dragging = True
-        self.position_update_timer.stop()
+        self.preview_manager.on_progress_slider_pressed()
 
     def on_progress_slider_released(self):
         """进度条释放时"""
-        self.is_dragging = False
-        position = int((self.audio_progress.value() / 100) * self.media_player.duration())
-        self.media_player.setPosition(position)
-        self.position_update_timer.start()
+        self.preview_manager.on_progress_slider_released()
 
     def format_time(self, milliseconds):
         """格式化时间显示"""
@@ -1887,16 +1236,7 @@ class FileSelectorDialog(QDialog):
     def closeEvent(self, event):
         """关闭事件"""
         try:
-            # 停止音频播放并释放资源
-            if hasattr(self, 'media_player'):
-                self.position_update_timer.stop()  # 停止定时器
-                if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-                    self.media_player.stop()
-                self.media_player.setSource(QUrl())  # 清除音频源
-                self.media_player.setAudioOutput(None)  # 断开音频输出
-                self.audio_output = None  # 释放音频输出
-                self.media_player = None  # 释放媒体播放器
-
+            self.preview_manager.cleanup()
         finally:
             event.accept()
 
@@ -2088,11 +1428,11 @@ class FileSelectorDialog(QDialog):
                     table_item = self.file_table.item(row, col)
                     if table_item:
                         if self.is_dark_mode():
-                            item.setBackground(QBrush(QColor("#1a3a1a")))  # 深色主题下的深绿色背景
-                            item.setForeground(QBrush(QColor("#4caf50")))  # 深色主题下的亮绿色文本
+                            table_item.setBackground(QBrush(QColor("#1a3a1a")))  # 深色主题下的深绿色背景
+                            table_item.setForeground(QBrush(QColor("#4caf50")))  # 深色主题下的亮绿色文本
                         else:
-                            item.setBackground(QBrush(QColor("#e8f5e9")))  # 浅色主题下的浅绿色背景
-                            item.setForeground(QBrush(QColor("#2e7d32")))
+                            table_item.setBackground(QBrush(QColor("#e8f5e9")))  # 浅色主题下的浅绿色背景
+                            table_item.setForeground(QBrush(QColor("#2e7d32")))
 
                 # 更新导出AB按钮状态
                 self.export_ab_btn.setEnabled(True)
@@ -2115,12 +1455,50 @@ class FileSelectorDialog(QDialog):
 
     def on_sort_changed(self, logical_index, order):
         """处理排序变化"""
-        if logical_index == 3:  # 大小列
-            # 获取所有行
-            for row in range(self.file_table.rowCount()):
-                size_item = self.file_table.item(row, 3)
-                if size_item:
-                    # 获取原始大小值
-                    size = size_item.data(Qt.ItemDataRole.UserRole)
-                    # 更新显示文本
-                    size_item.setText(self.format_file_size(size))
+        # 使用默认排序，自定义排序项会自动处理大小比较
+        self.file_table.sortItems(logical_index, order)
+
+    def export_image(self, file_info):
+        """导出直通图片"""
+        try:
+            if not file_info or not isinstance(file_info, tuple) or len(file_info) != 3:
+                return
+
+            name, file_type, path = file_info
+            # 检查是否有替换文件
+            if file_info in self.replace_files:
+                path = self.replace_files[file_info]
+
+            # 选择保存路径
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "导出直通图片",
+                f"{name}",
+                "PNG图片 (*.png);;JPG图片 (*.jpg);;所有文件 (*.*)"
+            )
+
+            if not file_path:
+                return
+
+            # 创建并启动worker线程
+            self.export_worker = ExportImageWorker(path, file_path)
+            self.export_worker.finished.connect(self.on_export_finished)
+            self.export_worker.error.connect(self.on_export_error)
+            self.export_worker.start()
+
+        except Exception as e:
+            self.logger.error(f"导出图片时出错: {str(e)}")
+            QMessageBox.critical(self, "错误", f"导出图片失败: {str(e)}")
+
+    def on_export_finished(self):
+        """导出完成处理"""
+        QMessageBox.information(self, "成功", "图片导出完成！")
+
+    def on_export_error(self, error_msg):
+        """导出错误处理"""
+        self.logger.error(f"导出图片时出错: {error_msg}")
+        QMessageBox.critical(self, "错误", f"导出图片失败: {error_msg}")
+
+    def _preview_audio(self, name, path, size_str):
+        """预览音频文件"""
+        self.preview_manager._preview_audio(name, path, size_str, self)

@@ -60,7 +60,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,
+    upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -73,10 +73,10 @@ exe = EXE(
     icon='src/resource/icon.webp',  # 添加图标
     uac_admin=False,  # 不需要管理员权限
     # 添加文件信息
-    file_description='Arknight AB Package Tool',
-    product_name='Arknight AB Package Tool',
+    file_description='Unity AB Package Tool',
+    product_name='Unity AB Package Tool',
     legal_copyright='Copyright (c) 2025',
-    company_name='Arknight Community',
+    company_name='MOD 实验室',
     # 优化选项
     optimize=2,  # 使用优化
 ) 

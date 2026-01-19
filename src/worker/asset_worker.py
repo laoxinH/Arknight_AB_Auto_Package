@@ -10,6 +10,7 @@ class AssetWorker(QThread):
     error = pyqtSignal(str)
     scan_complete = pyqtSignal(list, str,str)
 
+
     def __init__(self, source_file, output_dir=None, selected_files=None, mode="extract", replace_files=None):
         super().__init__()
         self.source_file = source_file
@@ -22,7 +23,7 @@ class AssetWorker(QThread):
     def run(self):
         try:
             self.progress.emit(f"正在处理文件: {self.source_file}")
-            extractor = AssetExtractor(self.output_dir)
+            extractor = AssetExtractor()
 
             if self.is_scanning:
                 # 扫描模式
@@ -31,20 +32,6 @@ class AssetWorker(QThread):
                 self.scan_complete.emit(files, temp_path, self.source_file)
                 self.progress.emit("扫描完成！")
                 self.finished.emit()
-            else:
-                # 提取或替换模式
-                success = extractor.extract_asset(
-                    self.source_file,
-                    self.selected_files,
-                    self.mode,
-                    self.replace_files
-                )
-
-                if success:
-                    self.progress.emit("处理完成！")
-                    self.finished.emit()
-                else:
-                    self.error.emit("处理失败，请查看日志")
         except Exception as e:
             self.error.emit(str(e))
 

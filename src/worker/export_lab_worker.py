@@ -57,7 +57,7 @@ class ExportLabWorker(QThread):
                     f.write(self.readme_txt.encode("utf-8"))
 
             self.progress.emit(f"正在导出AB资源包: {self.source_file}")
-            extractor = AssetExtractor(os.path.join(self.temp_dir, self.ab_name))
+            extractor = AssetExtractor()
 
             # 导出AB资源包
             success_ab = extractor.export_ab(

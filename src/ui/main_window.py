@@ -4,28 +4,33 @@
 import os
 import shutil
 import threading
-
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QFont, QIcon, QPixmap, QPalette, QColor
+from concurrent.futures import ThreadPoolExecutor
+from typing import List
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize, QUrl
+from PyQt6.QtGui import QFont, QIcon, QDesktopServices
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QFileDialog, QTextEdit,
-                             QMessageBox, QProgressBar, QGroupBox, QListWidget,
-                             QListWidgetItem, QApplication, QTableWidget, QTableWidgetItem,
+                             QMessageBox, QProgressBar, QGroupBox,
+                             QApplication, QTableWidget, QTableWidgetItem,
                              QHeaderView, QMenu)
-
-from src.core.asset_extractor import AssetExtractor
 from src.ui.file_selector import FileSelectorDialog
 from src.ui.batch_pack_dialog import BatchPackDialog
 from src.ui.donate_dialog import DonateDialog
+from src.ui.settings_dialog import SettingsDialog
 import logging
-from queue import Queue
+from queue import Queue,Empty
+
+from src.worker.BundleValidateWorker import BundleValidateWorker
 from src.worker.asset_worker import AssetWorker
 from src.worker.export_ab_worker import ExportABWorker
 from src.ui.batch_decrypt_dialog import BatchDecryptDialog
+from src.utils.BundleValidator import BundleValidator
+from src.ui.themes.main_window_theme_manager import ThemeManager
+from src.config.config_manager import ConfigManager
 
 
 class MainWindow(QMainWindow):
-
+    progress_signal = pyqtSignal(int, str)
     """主窗口类"""
     def __init__(self):
         super().__init__()
@@ -33,28 +38,91 @@ class MainWindow(QMainWindow):
         self.logger = logging.getLogger(__name__)
         self.asset_path = None
         self.asset_path_to_file_selector = {}
-        self.setWindowTitle("明日方舟资源包处理工具")
-        self.setMinimumSize(1100, 820)
-        self.resize(1100, 820)  # 设置初始窗口大小
+        self.setWindowTitle("AssetBundle资源包处理工具")
+        self.bundle_validator = BundleValidator()
+        self.is_shutting_down = False  # 添加关闭标志
+        self.workers = []  # 存储所有工作线程
+        self.thread_pool = None  # 线程池引用
+        self.progress_signal.connect(self.update_progress)
+
+        # 初始化配置管理器
+        self.config = ConfigManager()
+
+        # 创建主题管理器
+        self.theme_manager = ThemeManager(self)
+
+        # 获取主屏幕
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+        
+        # 计算窗口大小（使用屏幕宽度的60%和高度的70%）
+        default_width = int(screen_geometry.width() * 0.6)
+        default_height = int(screen_geometry.height() * 0.7)
+        
+        # 设置最小窗口大小（屏幕宽度的40%和高度的50%）
+        min_width = int(screen_geometry.width() * 0.4)
+        min_height = int(screen_geometry.height() * 0.5)
+        self.setMinimumSize(min_width, min_height)
+        
+        # 从配置恢复窗口大小和位置
+        saved_width = self.config.get('window_width')
+        saved_height = self.config.get('window_height')
+        saved_x = self.config.get('window_x')
+        saved_y = self.config.get('window_y')
+        saved_maximized = self.config.get('window_maximized', False)
+        
+        # 设置窗口大小
+        if saved_width and saved_height:
+            self.resize(saved_width, saved_height)
+        else:
+            self.resize(default_width, default_height)
+        
+        # 设置窗口位置
+        if saved_x is not None and saved_y is not None:
+            # 确保窗口在屏幕范围内
+            if 0 <= saved_x < screen_geometry.width() and 0 <= saved_y < screen_geometry.height():
+                self.move(saved_x, saved_y)
+            else:
+                # 如果保存的位置无效，则居中显示
+                x = (screen_geometry.width() - self.width()) // 2
+                y = (screen_geometry.height() - self.height()) // 2
+                self.move(x, y)
+        else:
+            # 没有保存位置，则居中显示
+            x = (screen_geometry.width() - self.width()) // 2
+            y = (screen_geometry.height() - self.height()) // 2
+            self.move(x, y)
+        
+        # 恢复最大化状态
+        if saved_maximized:
+            self.showMaximized()
+        
+        # 计算基础字体大小（基于屏幕高度）
+        self.base_font_size = max(8, int(screen_geometry.height() * 0.01))
+        
         self.setAcceptDrops(True)  # 启用拖拽功能
         self.lock = threading.Lock()
         # 添加已打开的资源窗口列表
         self.path_to_windows = {}  # 存储已打开的FileSelectorDialog实例
         self.windows_to_files = {}  # 存储窗口与文件的映射关系
+        self.path_to_files = {}  # 存储资源路径与文件列表的映射关系（持久化，即使窗口关闭也保留）
         self.window_list = QTableWidget()  # 用于显示已打开的窗口列表
         self.window_list.setColumnCount(3)  # 设置3列
         self.window_list.setHorizontalHeaderLabels(["名称", "路径", "大小"])  # 设置列标题
+        
         # 设置表格属性
         self.window_list.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.window_list.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # 修改为多选模式
         self.window_list.verticalHeader().setVisible(False)
         self.window_list.setShowGrid(False)
+        
         # 设置列宽
         header = self.window_list.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # 名称列自适应
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # 路径列可调整
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # 大小列固定宽度
-        self.window_list.setColumnWidth(2, 80)  # 设置大小列宽度
+        self.window_list.setColumnWidth(2, int(self.width() * 0.08))  # 设置大小列宽度为窗口宽度的8%
+        
         # 启用排序
         self.window_list.setSortingEnabled(True)
         # 连接排序信号
@@ -62,68 +130,7 @@ class MainWindow(QMainWindow):
         # 启用右键菜单
         self.window_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.window_list.customContextMenuRequested.connect(self.show_context_menu)
-        # 设置表格样式
-        self.window_list.setStyleSheet("""
-            QTableWidget {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 1px solid #3c3c3c;
-                border-radius: 4px;
-                gridline-color: #3c3c3c;
-            }
-            QTableWidget::item {
-                padding: 5px;
-                border-bottom: 1px solid #3c3c3c;
-                color: #ffffff;
-            }
-            QTableWidget::item:selected {
-                background-color: #3d3d3d;
-                color: #ffffff;
-            }
-            QTableWidget::item:hover {
-                background-color: #3d3d3d;
-                color: #ffffff;
-            }
-            QHeaderView::section {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                padding: 5px;
-                border: 1px solid #3c3c3c;
-                font-weight: bold;
-            }
-            QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 15px;
-                margin: 0px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #3c3c3c;
-                min-height: 20px;
-                border-radius: 3px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-            QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 15px;
-                margin: 0px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #3c3c3c;
-                min-width: 20px;
-                border-radius: 3px;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                background: none;
-            }
-        """)
+        
         # 记录所有临时目录
         self.temp_paths = []
 
@@ -133,13 +140,15 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self.setup_ui()
-        self.update_theme()  # 初始化主题
+        self.theme_manager.update_theme()  # 初始化主题
 
         # 创建定时器来检查系统主题变化
         self.theme_check_timer = QTimer(self)
-        self.theme_check_timer.timeout.connect(self.check_theme_change)
+        self.theme_check_timer.timeout.connect(self.theme_manager.check_theme_change)
         self.theme_check_timer.start(1000)  # 每秒检查一次
-        self.last_theme_is_dark = self.is_dark_mode()
+        
+        # 添加窗口大小变化事件处理
+        self.resizeEvent = self.on_resize
 
     def setup_ui(self):
         """设置用户界面"""
@@ -156,13 +165,13 @@ class MainWindow(QMainWindow):
         left_layout.setSpacing(15)
 
         # 创建标题
-        title_label = QLabel("明日方舟资源处理器(MOD实验室)")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title_label = QLabel("AssetBundle资源包编辑器(MOD实验室)")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(16)
         title_font.setBold(True)
-        title_label.setFont(title_font)
-        left_layout.addWidget(title_label)
+        self.title_label.setFont(title_font)
+        left_layout.addWidget(self.title_label)
 
         # 创建解包区域
         extract_group = QGroupBox("资源包处理")
@@ -182,10 +191,7 @@ class MainWindow(QMainWindow):
         self.batch_import_btn.clicked.connect(self.batch_import)
         import_buttons_layout.addWidget(self.batch_import_btn)
         
-    
-        
-        # 批量解密按钮
-        
+
 
         extract_layout.addLayout(import_buttons_layout)
 
@@ -208,19 +214,13 @@ class MainWindow(QMainWindow):
         # 批量更新MOD按钮
         self.update_mod_btn = QPushButton("批量打包")
         self.update_mod_btn.clicked.connect(self.show_batch_update_dialog)
+        batch_buttons_layout.addWidget(self.update_mod_btn)
 
+        # 批量解密按钮
         self.batch_decrypt_btn = QPushButton("批量解密")
         self.batch_decrypt_btn.clicked.connect(self.show_batch_decrypt_dialog)
         batch_buttons_layout.addWidget(self.batch_decrypt_btn)
-        batch_buttons_layout.addWidget(self.update_mod_btn)
-        
         package_layout.addLayout(batch_buttons_layout)
-        
-        # 添加状态标签
-        self.batch_status_label = QLabel("请选择要处理的资源包")
-        self.batch_status_label.setStyleSheet("color: #666666;")
-        self.batch_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        package_layout.addWidget(self.batch_status_label)
         
         package_group.setLayout(package_layout)
         left_layout.addWidget(package_group)
@@ -228,151 +228,147 @@ class MainWindow(QMainWindow):
         # 创建关于区域
         about_group = QGroupBox("关于")
         about_layout = QVBoxLayout()
-        about_layout.setSpacing(15)
+        about_layout.setSpacing(20)
+        
+        # 添加弹性空间在顶部
+        about_layout.addStretch(1)
         
         # 创建图标布局
         icons_layout = QHBoxLayout()
-        icons_layout.setSpacing(20)
+        icons_layout.setSpacing(30)
         icons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # GitHub图标和文字
-        github_layout = QVBoxLayout()
+        # GitHub按钮容器
+        github_container = QWidget()
+        github_layout = QVBoxLayout(github_container)
+        github_layout.setContentsMargins(0, 0, 0, 0)
+        github_layout.setSpacing(8)
         github_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        github_layout.setSpacing(5)
-        github_icon = QLabel()
-        github_pixmap = QPixmap(os.path.join(os.path.dirname(os.path.dirname(__file__)), "resource", "about", "github.png"))
-        github_icon.setPixmap(github_pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        github_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        github_layout.addWidget(github_icon)
         
-        self.github_link = QLabel('<a href="https://github.com/laoxinH/Arknight_AB_Auto_Package">项目地址</a>')
-        self.github_link.setOpenExternalLinks(True)
-        self.github_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        github_layout.addWidget(self.github_link)
+        self.github_btn = QPushButton()
+        self.github_btn.setFixedSize(56, 56)
+        self.github_btn.setFlat(True)
+        self.github_btn.setText("🔗")  # 链接符号
+        self.github_btn.setStyleSheet("font-size: 36px; border-radius: 8px;")
+        self.github_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/laoxinH/Arknight_AB_Auto_Package")))
+        github_layout.addWidget(self.github_btn)
         
-        icons_layout.addLayout(github_layout)
+        # GitHub标签
+        self.github_label = QLabel("项目地址")
+        self.github_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.github_label.setStyleSheet("color: #666666; font-size: 12px;")
+        github_layout.addWidget(self.github_label)
         
-        # 支付宝图标和文字
-        alipay_layout = QVBoxLayout()
+        # 支付宝按钮容器
+        alipay_container = QWidget()
+        alipay_layout = QVBoxLayout(alipay_container)
+        alipay_layout.setContentsMargins(0, 0, 0, 0)
+        alipay_layout.setSpacing(8)
         alipay_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        alipay_layout.setSpacing(5)
-        alipay_icon = QLabel()
-        alipay_pixmap = QPixmap(os.path.join(os.path.dirname(os.path.dirname(__file__)), "resource", "about", "alipay.png"))
-        alipay_icon.setPixmap(alipay_pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        alipay_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        alipay_layout.addWidget(alipay_icon)
         
-        self.alipay_link = QLabel('<a href="#">支持作者</a>')
-        self.alipay_link.setOpenExternalLinks(False)
-        self.alipay_link.linkActivated.connect(self.show_donate_dialog)
-        self.alipay_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        alipay_layout.addWidget(self.alipay_link)
+        self.alipay_btn = QPushButton()
+        self.alipay_btn.setFixedSize(56, 56)
+        self.alipay_btn.setFlat(True)
+        self.alipay_btn.setText("💰")  # 钱袋符号
+        self.alipay_btn.setStyleSheet("font-size: 36px; border-radius: 8px;")
+        self.alipay_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.alipay_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://www.modwu.com/?p=219")))
+        alipay_layout.addWidget(self.alipay_btn)
         
-        icons_layout.addLayout(alipay_layout)
+        # 支付宝标签
+        self.alipay_label = QLabel("支持作者")
+        self.alipay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.alipay_label.setStyleSheet("color: #666666; font-size: 12px;")
+        alipay_layout.addWidget(self.alipay_label)
         
-        # 主题切换按钮
-        theme_layout = QVBoxLayout()
-        theme_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        theme_layout.setSpacing(5)
+        # MOD社区按钮容器
+        community_container = QWidget()
+        community_layout = QVBoxLayout(community_container)
+        community_layout.setContentsMargins(0, 0, 0, 0)
+        community_layout.setSpacing(8)
+        community_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.community_btn = QPushButton()
+        self.community_btn.setFixedSize(56, 56)
+        self.community_btn.setFlat(True)
+        self.community_btn.setText("🏘️")  # 社区符号
+        self.community_btn.setStyleSheet("font-size: 36px; border-radius: 8px;")
+        self.community_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.community_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://www.modwu.com/")))
+        community_layout.addWidget(self.community_btn)
+        
+        # MOD社区标签
+        self.community_label = QLabel("MOD社区")
+        self.community_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.community_label.setStyleSheet("color: #666666; font-size: 12px;")
+        community_layout.addWidget(self.community_label)
         
         # 主题切换按钮容器
         theme_container = QWidget()
-        theme_container.setFixedSize(32, 32)
-        theme_container_layout = QVBoxLayout(theme_container)
-        theme_container_layout.setContentsMargins(0, 0, 0, 0)
-        theme_container_layout.setSpacing(0)
-        theme_container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        theme_layout = QVBoxLayout(theme_container)
+        theme_layout.setContentsMargins(0, 0, 0, 0)
+        theme_layout.setSpacing(8)
+        theme_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.theme_btn = QPushButton()
-        self.theme_btn.setFixedSize(32, 32)
-        self.theme_btn.setIconSize(QSize(32, 32))
+        self.theme_btn.setFixedSize(56, 56)
         self.theme_btn.setFlat(True)
+        self.theme_btn.setStyleSheet("font-size: 36px; border-radius: 8px;")
+        self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.theme_btn.clicked.connect(self.toggle_theme)
-        # 初始化主题图标
-        self.update_theme_icon()
-        theme_container_layout.addWidget(self.theme_btn)
+        # 初始化主题图标（使用emoji）
+        self.theme_manager.update_theme_icon()
+        theme_layout.addWidget(self.theme_btn)
         
-        theme_layout.addWidget(theme_container)
-        
-        # 主题切换说明文字
+        # 主题标签
         self.theme_label = QLabel("主题")
         self.theme_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.theme_label.setFixedWidth(32)  # 设置固定宽度与图标一致
-        self.theme_label.setStyleSheet("color: #666666;")
+        self.theme_label.setStyleSheet("color: #666666; font-size: 12px;")
         theme_layout.addWidget(self.theme_label)
-
-        icons_layout.addLayout(theme_layout)
+        
+        # 设置按钮容器
+        settings_container = QWidget()
+        settings_layout = QVBoxLayout(settings_container)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
+        settings_layout.setSpacing(8)
+        settings_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.settings_btn = QPushButton()
+        self.settings_btn.setFixedSize(56, 56)
+        self.settings_btn.setFlat(True)
+        self.settings_btn.setText("⚙️")  # 齿轮符号
+        self.settings_btn.setStyleSheet("font-size: 36px; border-radius: 8px;")
+        self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.clicked.connect(self.show_settings_dialog)
+        settings_layout.addWidget(self.settings_btn)
+        
+        # 设置标签
+        self.settings_label = QLabel("设置")
+        self.settings_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.settings_label.setStyleSheet("color: #666666; font-size: 12px;")
+        settings_layout.addWidget(self.settings_label)
+        
+        # 添加所有按钮到布局
+        icons_layout.addWidget(github_container)
+        icons_layout.addWidget(alipay_container)
+        icons_layout.addWidget(community_container)
+        icons_layout.addWidget(theme_container)
+        icons_layout.addWidget(settings_container)
         
         about_layout.addLayout(icons_layout)
         
         # 添加说明文字
-        self.about_text = QLabel("感谢您的使用！\n如果觉得这个工具对您有帮助，\n欢迎在GitHub上点个Star或支持作者。")
+        self.about_text = QLabel("感谢您的使用！\n\n如果觉得这个工具对您有帮助，\n欢迎在GitHub上点个Star或支持作者。\n\n日志文件保存在程序目录的 logs 文件夹中。")
         self.about_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.about_text.setStyleSheet("color: #666666; font-size: 13px; line-height: 1.6;")
         about_layout.addWidget(self.about_text)
+        
+        # 添加弹性空间在底部
+        about_layout.addStretch(1)
         
         about_group.setLayout(about_layout)
         left_layout.addWidget(about_group)
-
-        # 创建日志区域
-        log_group = QGroupBox("处理日志")
-        log_layout = QVBoxLayout()
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(150)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                background-color: white;
-                color: #333333;
-                padding: 5px;
-            }
-            QScrollBar:vertical {
-                background-color: #f8f9fa;
-                width: 12px;
-                margin: 0px;
-                border: none;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #dee2e6;
-                min-height: 30px;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #ced4da;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-            QScrollBar:horizontal {
-                background-color: #f8f9fa;
-                height: 12px;
-                margin: 0px;
-                border: none;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #dee2e6;
-                min-width: 30px;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #ced4da;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                background: none;
-            }
-        """)
-        log_layout.addWidget(self.log_text)
-        log_group.setLayout(log_layout)
-        left_layout.addWidget(log_group)
 
         # 创建进度条
         self.progress_bar = QProgressBar()
@@ -451,15 +447,21 @@ class MainWindow(QMainWindow):
     def single_import(self):
         """单个导入资源包"""
         try:
+            # 获取上次使用的目录
+            last_dir = self.config.get('last_input_dir', '')
+            
             file_name, _ = QFileDialog.getOpenFileName(
                 self,
                 "选择资源包文件",
-                "",
-                "资源包文件 (*.ab);;所有文件 (*.*)"
+                last_dir,
+                "所有文件 (*.*)"
             )
             if self.check_file_exists(file_name):
                 return
             if file_name:
+                # 保存当前目录
+                self.config.set('last_input_dir', os.path.dirname(file_name))
+                
                 self.asset_path = file_name
                 self.status_label.setText("正在扫描资源包...")
                 self.status_label.setStyleSheet("color: #4a86e8;")
@@ -470,74 +472,177 @@ class MainWindow(QMainWindow):
 
     def batch_import(self):
         """批量导入资源包"""
+
+        """批量导入资源包"""
         try:
+            # 获取上次使用的目录
+            last_dir = self.config.get('last_input_dir', '')
+            
             dir_path = QFileDialog.getExistingDirectory(
                 self,
                 "选择资源包文件夹",
-                "",
+                last_dir,
                 QFileDialog.Option.ShowDirsOnly
             )
 
             if not dir_path:
                 return
+            
+            # 保存当前目录
+            self.config.set('last_input_dir', dir_path)
 
-            # 查找所有.ab文件
-            ab_files = []
+            # 收集所有文件
+            all_files = []
             for root, _, files in os.walk(dir_path):
                 for file in files:
-                    if file.endswith('.ab'):
-                        ab_files.append(os.path.join(root, file))
+                    all_files.append(os.path.join(root, file))
 
-            if not ab_files:
-                QMessageBox.warning(self, "警告", "未找到任何资源包文件！")
+            if not all_files:
+                QMessageBox.warning(self, "警告", "选择的文件夹为空！")
                 return
 
             # 更新状态
-            self.status_label.setText(f"找到 {len(ab_files)} 个资源包文件")
+            self.status_label.setText("正在验证文件...")
             self.status_label.setStyleSheet("color: #4a86e8;")
-            self.update_log(f"开始批量处理 {len(ab_files)} 个资源包文件")
+            self.update_log("开始验证文件...")
 
-            # 创建线程池存储所有工作线程
-            self.workers = []
+            # 创建并启动验证线程
+            self.validate_worker = BundleValidateWorker(all_files)
+            # self.validate_worker.progress.connect(self.progress_bar.)
 
-            # 批量处理文件
-            for ab_file in ab_files:
-                # 检查文件是否已存在
-                if self.check_file_exists(ab_file):
-                    continue
-                try:
-                    self.asset_path = ab_file
-                    self.update_log(f"正在处理文件: {os.path.basename(ab_file)}")
-
-                    # 创建工作线程
-                    worker = AssetWorker(ab_file)
-                    worker.progress.connect(self.update_log)
-                    worker.finished.connect(self.scan_finished)
-                    worker.error.connect(self.handle_error)
-                    worker.scan_complete.connect(self.on_scan_complete)
-
-                    # 将工作线程添加到线程池
-                    self.workers.append(worker)
-
-
-                except Exception as e:
-                    self.update_log(f"处理文件 {os.path.basename(ab_file)} 时出错: {str(e)}")
-                    continue
-
-            # 等待所有线程完成并更新处理进度
-            for worker in self.workers:
-                worker.start()
-                id = self.workers.index(worker)
-                # self.progress_bar.setValue(int(id * (100 / len(self.workers))))
-
-            self.update_log("批量处理完成")
-            self.status_label.setText("批量处理完成")
-            self.status_label.setStyleSheet("color: #28a745;")
+            self.validate_worker.validated.connect(self.on_validate_complete)
+            self.validate_worker.error.connect(self.handle_error)
+            self.validate_worker.start()
 
         except Exception as e:
             self.update_log(f"批量导入时出错: {str(e)}")
             QMessageBox.critical(self, "错误", f"批量导入时出错: {str(e)}")
 
+    #
+    # try:
+    #         dir_path = QFileDialog.getExistingDirectory(
+    #             self,
+    #             "选择资源包文件夹",
+    #             "",
+    #             QFileDialog.Option.ShowDirsOnly
+    #         )
+    #
+    #         if not dir_path:
+    #             return
+    #
+    #         # 查找所有.ab文件
+    #         ab_files = []
+    #         for root, _, files in os.walk(dir_path):
+    #             for file in files:
+    #                 if self.bundle_validator.is_valid_bundle(os.path.join(root, file))[0]:
+    #                     ab_files.append(os.path.join(root, file))
+    #
+    #         if not ab_files:
+    #             QMessageBox.warning(self, "警告", "未找到任何资源包文件！")
+    #             return
+    #
+    #         # 更新状态
+    #         self.status_label.setText(f"找到 {len(ab_files)} 个资源包文件")
+    #         self.status_label.setStyleSheet("color: #4a86e8;")
+    #         self.update_log(f"开始批量处理 {len(ab_files)} 个资源包文件")
+    #
+    #
+    #
+    #     except Exception as e:
+    #         self.update_log(f"批量导入时出错: {str(e)}")
+    #         QMessageBox.critical(self, "错误", f"批量导入时出错: {str(e)}")
+
+    def on_validate_complete(self, valid_files: List[str]):
+        if not valid_files:
+            self.update_log("未找到有效的资源包文件")
+            QMessageBox.warning(self, "警告", "未找到任何有效的资源包文件！")
+            return
+
+        # 更新状态
+        self.status_label.setText(f"找到 {len(valid_files)} 个有效资源包文件")
+        self.status_label.setStyleSheet("color: #4a86e8;")
+        self.update_log(f"开始批量处理 {len(valid_files)} 个资源包文件")
+
+        # 创建任务队列和处理进度计数器
+        self.task_queue = Queue()
+        self.completed_tasks = 0
+        self.total_tasks = len(valid_files)
+        self.task_lock = threading.Lock()
+
+        # 将所有文件添加到任务队列
+        for file_path in valid_files:
+            if not self.check_file_exists(file_path):
+                self.task_queue.put(file_path)
+
+        # 创建线程池（设置合适的线程数，比如CPU核心数的2倍）
+        max_workers = os.cpu_count() * 2 or 4
+        self.thread_pool = ThreadPoolExecutor(max_workers=max_workers)
+
+        # 启动处理线程
+        for _ in range(max_workers):
+            self.thread_pool.submit(self.process_file_task)
+
+    def process_file_task(self):
+        """处理单个文件的任务"""
+        while not self.is_shutting_down:
+            try:
+                # 从队列获取任务，设置较短的超时时间以便及时响应终止信号
+                try:
+                    file_path = self.task_queue.get(timeout=0.5)
+                except Empty:
+                    continue
+
+                # 检查是否正在关闭
+                if self.is_shutting_down:
+                    break
+
+                try:
+                    self.update_log(f"正在处理文件: {os.path.basename(file_path)}")
+                    self.asset_path = file_path
+
+                    worker = AssetWorker(file_path)
+                    worker.progress.connect(self.update_log)
+                    worker.finished.connect(self.scan_finished)
+                    worker.error.connect(self.handle_error)
+                    worker.scan_complete.connect(self.on_scan_complete)
+
+                    # 添加到工作线程列表
+                    with self.task_lock:
+                        self.workers.append(worker)
+
+                    worker.start()
+                    worker.wait()
+
+                    # 从列表中移除完成的线程
+                    with self.task_lock:
+                        if worker in self.workers:
+                            self.workers.remove(worker)
+
+                    # 更新进度
+                    with self.task_lock:
+                        if not self.is_shutting_down:
+                            self.completed_tasks += 1
+                            progress = (self.completed_tasks / self.total_tasks) * 100
+                            # 使用 QMetaObject.invokeMethod 在主线程中更新进度
+                            self.progress_signal.emit(int(progress), f"正在处理: {self.completed_tasks}/{self.total_tasks} ({progress:.1f}%)")
+                            if self.completed_tasks == self.total_tasks:
+                                self.progress_signal.emit(0, "处理完成！")
+
+                except Exception as e:
+                    self.logger.error(f"处理文件失败 {file_path}: {str(e)}")
+                    self.update_log(f"处理文件失败 {os.path.basename(file_path)}: {str(e)}")
+
+                finally:
+                    self.task_queue.task_done()
+
+            except Exception as e:
+                if not self.is_shutting_down:
+                    self.logger.error(f"处理任务时出错: {str(e)}")
+
+    def update_progress(self, value,message):
+        """更新进度条的槽函数"""
+        self.progress_bar.setValue(min(value, 100))
+        self.progress_bar.setFormat(message)
     def start_scan(self):
         """开始扫描资源包"""
         if self.asset_path is None:
@@ -575,6 +680,7 @@ class MainWindow(QMainWindow):
 
             self.path_to_windows[asset_path] = dialog
             self.windows_to_files[dialog] = files
+            self.path_to_files[asset_path] = files  # 持久化保存文件列表
 
             # 临时禁用排序
             self.window_list.setSortingEnabled(False)
@@ -613,8 +719,8 @@ class MainWindow(QMainWindow):
             # 更新统计信息
             self.update_stats()
 
-            # 连接窗口关闭信号
-            # dialog.finished.connect(lambda: self.on_window_closed(dialog))
+            # 连接窗口关闭信号，当窗口关闭时自动清理引用
+            dialog.destroyed.connect(lambda: self.on_window_closed(asset_path))
         else:
             QMessageBox.warning(self, "警告", "未找到可提取的文件！")
             self.status_label.setText("未找到可提取的文件")
@@ -702,12 +808,9 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(50)
 
     def update_log(self, message):
-        """更新日志"""
-        self.log_text.append(message)
-        # 滚动到底部
-        self.log_text.verticalScrollBar().setValue(
-            self.log_text.verticalScrollBar().maximum()
-        )
+        """更新日志（仅记录到日志文件，不再显示在UI中）"""
+        # 只记录到日志文件
+        self.logger.info(message)
 
     def scan_finished(self):
         """扫描完成"""
@@ -741,102 +844,182 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.status_label.setText("处理出错")
         self.status_label.setStyleSheet("color: #dc3545;")
-        self.log_text.append(f"处理过程中出现错误：{error_message}")
+        self.logger.error(f"处理过程中出现错误：{error_message}")
         QMessageBox.critical(self, "错误", f"处理过程中出现错误：{error_message}")
 
 
     def close_selected_windows(self):
         """移除选中的资源包"""
-        # 获取选中的行
-        selected_rows = set(item.row() for item in self.window_list.selectedItems())
-        if not selected_rows:
-            QMessageBox.warning(self, "警告", "请先选择要移除的资源包！")
-            return
+        try:
+            # 获取选中的行
+            selected_rows = set(item.row() for item in self.window_list.selectedItems())
+            if not selected_rows:
+                QMessageBox.warning(self, "警告", "请先选择要移除的资源包！")
+                return
             
-        # 按行号从大到小排序，避免删除时行号变化导致的问题
-        selected_rows = sorted(selected_rows, reverse=True)
-        
-        # 确认对话框
-        reply = QMessageBox.question(
-            self,
-            "确认移除",
-            f"确定要移除选中的 {len(selected_rows)} 个资源包吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            for row in selected_rows:
-                asset_path = self.window_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
-                # 获取对应的窗口
-                if asset_path in self.path_to_windows:
-                    window = self.path_to_windows[asset_path]
-                    # 关闭窗口
-                    window.close()
-                    # 从字典中移除
+            # 按行号从大到小排序，避免删除时行号变化导致的问题
+            selected_rows = sorted(selected_rows, reverse=True)
+            
+            # 确认对话框
+            reply = QMessageBox.question(
+                self,
+                "确认移除",
+                f"确定要移除选中的 {len(selected_rows)} 个资源包吗？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                for row in selected_rows:
+                    asset_path = self.window_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
+                    
+                    # 如果存在对应的窗口，先关闭窗口并清理引用
+                    if asset_path in self.path_to_windows:
+                        window = self.path_to_windows[asset_path]
+                        try:
+                            # 检查窗口对象是否已被删除
+                            # 尝试访问窗口属性，如果对象已删除会抛出RuntimeError
+                            _ = window.isVisible()
+                            # 窗口对象存在，正常关闭
+                            window.close()
+                        except RuntimeError:
+                            # 窗口对象已被删除，只需清理引用
+                            self.logger.info(f"窗口已被删除，直接清理引用: {asset_path}")
+                        
+                        # 从字典中移除
+                        del self.path_to_windows[asset_path]
+                        if window in self.windows_to_files:
+                            del self.windows_to_files[window]
+                    
+                    # 清理文件列表映射（移除资源时才清理，关闭窗口时不清理）
+                    if asset_path in self.path_to_files:
+                        del self.path_to_files[asset_path]
+                    
+                    # 无论窗口是否存在，都要从列表中移除行
                     self.window_list.removeRow(row)
-                    del self.path_to_windows[asset_path]
-                    self.windows_to_files.pop(window)  # 删除映射关系
-            # 更新统计信息
-            self.update_stats()
+                    
+                # 更新统计信息
+                self.update_stats()
+        except Exception as e:
+            self.logger.error(f"关闭窗口时出错: {str(e)}")
+            QMessageBox.critical(self, "错误", f"关闭窗口失败: {str(e)}")
 
     def close_all_windows(self):
         """移除所有资源包"""
-        if self.window_list.rowCount() == 0:
-            QMessageBox.warning(self, "警告", "没有可移除的资源包！")
-            return
+        try:
+            if self.window_list.rowCount() == 0:
+                QMessageBox.warning(self, "警告", "没有可移除的资源包！")
+                return
             
-        # 确认对话框
-        reply = QMessageBox.question(
-            self,
-            "确认移除",
-            "确定要移除所有资源包吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            # 关闭所有窗口
-            for path in self.path_to_windows:
-                window = self.path_to_windows[path]
-                window.close()
+            # 确认对话框
+            reply = QMessageBox.question(
+                self,
+                "确认移除",
+                "确定要移除所有资源包吗？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
             
-            # 清空列表
-            self.window_list.setRowCount(0)
-            self.windows_to_files.clear()
-            
-            # 更新统计信息
-            self.update_stats()
+            if reply == QMessageBox.StandardButton.Yes:
+                # 关闭所有窗口
+                for path in list(self.path_to_windows.keys()):
+                    window = self.path_to_windows[path]
+                    try:
+                        # 检查窗口对象是否已被删除
+                        _ = window.isVisible()
+                        # 窗口对象存在，正常关闭
+                        window.close()
+                    except RuntimeError:
+                        # 窗口对象已被删除，只需清理引用
+                        self.logger.info(f"窗口已被删除，直接清理引用: {path}")
+                    
+                    del self.path_to_windows[path]
+                    if window in self.windows_to_files:
+                        del self.windows_to_files[window]
+                
+                # 清理所有文件列表映射（移除所有资源时才清理）
+                self.path_to_files.clear()
+                
+                # 清空列表
+                self.window_list.setRowCount(0)
+                
+                # 更新统计信息
+                self.update_stats()
+        except Exception as e:
+            self.logger.error(f"关闭所有窗口时出错: {str(e)}")
+            QMessageBox.critical(self, "错误", f"关闭所有窗口失败: {str(e)}")
+
+    def on_window_closed(self, asset_path):
+        """处理窗口关闭事件，清理主窗口中的窗口引用（但保留列表显示和文件列表）"""
+        try:
+            # 只从字典中移除窗口引用，保留列表显示和文件列表以便后续可以重新打开
+            if asset_path in self.path_to_windows:
+                window = self.path_to_windows[asset_path]
+                del self.path_to_windows[asset_path]
+                if window in self.windows_to_files:
+                    del self.windows_to_files[window]
+                # 注意：不删除 self.path_to_files[asset_path]，保留文件列表
+                
+                self.logger.info(f"已清理窗口引用（保留列表显示和文件列表）: {asset_path}")
+        except Exception as e:
+            self.logger.error(f"处理窗口关闭事件时出错: {str(e)}")
 
     def on_window_double_clicked(self, item):
-
         """处理窗口列表项双击事件"""
-        # 获取双击的行
-        row = item.row()
-        asset_path = self.window_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
-        # 获取对应的窗口
-        window = self.path_to_windows[asset_path]
-        # 如果窗口已经关闭，重新创建并显示
-        if not window.isVisible():
-            # 获取资源包路径
+        try:
+            # 获取双击的行
+            row = item.row()
             asset_path = self.window_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
-            # 创建新的窗口
-            files = self.windows_to_files[window]
-            window = FileSelectorDialog(asset_path, self.windows_to_files[window], self.temp_paths[row], self)
-            window.files_selected.connect(self.on_files_selected)
-            window.file_replaced.connect(self.on_file_replaced)
-            window.export_ab.connect(self.on_export_ab)
-            # window.finished.connect(lambda: self.on_window_closed(window))
-            self.windows_to_files[window] = files
-            # 替换原来的窗口
-            self.path_to_windows[asset_path] = window
-            # 显示窗口
-            window.check_theme_change()
-            window.show()
-        else:
-            # 如果窗口已经打开，则将其置顶
-            window.raise_()
-            window.activateWindow()
+            
+            # 检查窗口是否已经存在
+            if asset_path in self.path_to_windows:
+                window = self.path_to_windows[asset_path]
+                # 如果窗口已经关闭，重新创建
+                try:
+                    window.isVisible()
+                except RuntimeError:
+                    # 窗口对象已被删除，重新创建
+                    # 从持久化字典中获取文件列表
+                    files = self.path_to_files.get(asset_path, [])
+                    window = FileSelectorDialog(asset_path, files, self.temp_paths[row], self)
+                    window.files_selected.connect(self.on_files_selected)
+                    window.file_replaced.connect(self.on_file_replaced)
+                    window.export_ab.connect(self.on_export_ab)
+                    window.destroyed.connect(lambda: self.on_window_closed(asset_path))
+                    # 更新窗口引用
+                    self.path_to_windows[asset_path] = window
+                    self.windows_to_files[window] = files
+                    # 显示窗口
+                    window.check_theme_change()
+                    window.show()
+                else:
+                    # 窗口对象存在，检查是否可见
+                    if not window.isVisible():
+                        # 窗口被隐藏了，显示它
+                        window.check_theme_change()
+                        window.show()
+                    else:
+                        # 如果窗口已经打开，则将其置顶
+                        window.raise_()
+                        window.activateWindow()
+            else:
+                # 如果窗口不存在，创建新窗口
+                # 从持久化字典中获取文件列表
+                files = self.path_to_files.get(asset_path, [])
+                window = FileSelectorDialog(asset_path, files, self.temp_paths[row], self)
+                window.files_selected.connect(self.on_files_selected)
+                window.file_replaced.connect(self.on_file_replaced)
+                window.export_ab.connect(self.on_export_ab)
+                window.destroyed.connect(lambda: self.on_window_closed(asset_path))
+                # 更新窗口引用
+                self.path_to_windows[asset_path] = window
+                self.windows_to_files[window] = files
+                # 显示窗口
+                window.check_theme_change()
+                window.show()
+        except Exception as e:
+            self.logger.error(f"打开窗口时出错: {str(e)}")
+            QMessageBox.critical(self, "错误", f"打开窗口失败: {str(e)}")
 
     def show_batch_update_dialog(self):
         """显示批量更新窗口"""
@@ -848,50 +1031,87 @@ class MainWindow(QMainWindow):
         dialog = DonateDialog(self)
         dialog.exec()
 
+    def show_settings_dialog(self):
+        """显示设置窗口"""
+        dialog = SettingsDialog(self)
+        dialog.exec()
+
     def show_batch_decrypt_dialog(self):
         """显示批量解密窗口"""
         dialog = BatchDecryptDialog(self)
         dialog.show()
 
     def closeEvent(self, event):
-        """关闭事件"""
-        count = 0
+        """关闭事件处理"""
         try:
-            self.logger.info("清理临时文件...")
-            for file_path in self.temp_paths:
-                if os.path.exists(file_path):
+            # 保存窗口状态到配置
+            self.save_window_state()
+            
+            # 设置关闭标志
+            self.is_shutting_down = True
+
+            # 关闭所有 FileSelectorDialog 窗口
+            for path in self.path_to_windows:
+                window = self.path_to_windows[path]
+                try:
+                    if window.isVisible():
+                        window.close()
+                except Exception as e:
+                    pass
+                    # self.logger.error(f"关闭窗口时出错: {str(e)}")
+
+            # 等待所有任务完成
+            if hasattr(self, 'task_queue'):
+                while not self.task_queue.empty():
                     try:
-                        # 使用shutil.rmtree强制删除目录
-                        shutil.rmtree(file_path, ignore_errors=False)
+                        self.task_queue.get_nowait()
+                        self.task_queue.task_done()
+                    except Empty:
+                        break
+
+            # 关闭线程池
+            if self.thread_pool:
+                self.thread_pool.shutdown(wait=False)
+                self.thread_pool = None
+
+            # 终止所有工作线程
+            for worker in self.workers:
+                if worker.isRunning():
+                    worker.terminate()
+                    worker.wait(1000)  # 等待最多1秒
+
+            # 清理临时目录
+            count = 0
+            for temp_path in self.temp_paths:
+                try:
+                    if os.path.exists(temp_path):
                         count += 1
-                    except PermissionError as e:
-                        self.logger.warning(f"删除临时文件失败: {file_path}, 权限错误: {str(e)}")
-                    except Exception as e:
-                        self.logger.warning(f"删除临时文件失败: {file_path}, {str(e)}")
+                        shutil.rmtree(temp_path)
+
+                except Exception as e:
+                    self.logger.error(f"清理临时目录失败: {str(e)}")
+            self.logger.info(f"临时目录已删除: {count} 个")
         except Exception as e:
-            self.logger.error(f"清理临时文件时出错: {str(e)}")
+            self.logger.error(f"关闭应用时出错: {str(e)}")
         finally:
-            if count > 0:
-                self.logger.info(f"成功删除临时文件夹: {count} 个")
-            else:
-                self.logger.info("没有临时文件需要删除")
             event.accept()
 
     def dragEnterEvent(self, event):
         """处理拖拽进入事件"""
         if event.mimeData().hasUrls():
             # 检查是否包含有效的AB文件
-            has_valid_files = False
+            has_valid_files = True
+
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
-                if os.path.isfile(file_path) and file_path.lower().endswith('.ab'):
+                if os.path.isfile(file_path) and self.bundle_validator.is_valid_bundle(file_path)[0]:
                     has_valid_files = True
                     break
                 if os.path.isdir(file_path):
                     # 如果是目录，则检查目录下是否有AB文件
                     for root, _, files in os.walk(file_path):
                         for file in files:
-                            if file.lower().endswith('.ab'):
+                            if self.bundle_validator.is_valid_bundle(file_path)[0]:
                                 has_valid_files = True
                                 break
                         if has_valid_files:
@@ -909,70 +1129,33 @@ class MainWindow(QMainWindow):
         if event.mimeData().hasUrls():
             valid_files = []
             skipped_files = []
-            
+            all_files = []
             # 收集有效的AB文件
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
                 if os.path.isfile(file_path):
-                    if file_path.lower().endswith('.ab'):
-                        valid_files.append(file_path)
-                    else:
-                        skipped_files.append(os.path.basename(file_path))
+                    all_files.append(file_path)
                 elif os.path.isdir(file_path):
                     # 如果是目录，则检查目录下是否有AB文件
                     for root, _, files in os.walk(file_path):
                         for file in files:
-                            if file.lower().endswith('.ab'):
-                                valid_files.append(os.path.join(root, file))
-                            else:
-                                skipped_files.append(os.path.basename(file))
+                            all_files.append(os.path.join(root, file))
 
-            if valid_files:
-                self.workers = []
-                # 导入有效的AB文件
-                for file_path in valid_files:
-                    try:
-                        # 检查文件是否已存在
-                        if self.check_file_exists(file_path):
-                            continue
-                        self.asset_path = file_path
-                        self.update_log(f"正在处理文件: {os.path.basename(file_path)}")
 
-                        # 创建工作线程
-                        worker = AssetWorker(file_path)
-                        worker.progress.connect(self.update_log)
-                        worker.finished.connect(self.scan_finished)
-                        worker.error.connect(self.handle_error)
-                        worker.scan_complete.connect(self.on_scan_complete)
-
-                        # 将工作线程添加到线程池
-                        self.workers.append(worker)
-                        worker.start()
-
-                        # 更新状态
-                        self.update_log(f"已导入: {os.path.basename(file_path)}")
-                        self.logger.info(f"导入AB文件: {file_path}")
-
-                    except Exception as e:
-                        self.logger.error(f"导入文件失败 {file_path}: {str(e)}")
-                        QMessageBox.critical(self, "错误", f"导入文件失败 {os.path.basename(file_path)}: {str(e)}")
-                        continue
-
-                # 显示跳过的文件信息
-                if skipped_files:
-                    QMessageBox.information(self, "提示", f"已跳过{len(skipped_files)}个非AB文件")
-
-                event.acceptProposedAction()
-            else:
-                if skipped_files:
-                    QMessageBox.warning(self, "警告", "没有有效的AB文件可导入！")
-                event.ignore()
+            # 创建并启动验证线程
+            self.validate_worker = BundleValidateWorker(all_files)
+            self.validate_worker.progress.connect(self.update_log)
+            self.validate_worker.validated.connect(self.on_validate_complete)
+            self.validate_worker.error.connect(self.handle_error)
+            self.validate_worker.start()
 
     def check_file_exists(self, file_path):
         """检查文件是否已存在于列表中"""
+        # file_path 转化为标准路径统一斜杠
+        file_path = os.path.normpath(file_path)
         for row in range(self.window_list.rowCount()):
             item = self.window_list.item(row, 0)
-            if item.data(Qt.ItemDataRole.UserRole) == file_path:
+            if os.path.normpath(item.data(Qt.ItemDataRole.UserRole)) == file_path:
                 return True
         return False
 
@@ -981,672 +1164,29 @@ class MainWindow(QMainWindow):
         count = self.window_list.rowCount()
         self.stats_label.setText(f"已加载资源包: {count} 个")
 
-    def check_theme_change(self):
-        """检查系统主题是否发生变化"""
-        current_is_dark = self.is_dark_mode()
-        if current_is_dark != self.last_theme_is_dark:
-            self.last_theme_is_dark = current_is_dark
-            self.update_theme()
-
-    def update_theme(self):
-        """更新主题样式"""
-        is_dark = self.is_dark_mode()
-        if is_dark:
-            self.apply_dark_theme()
-        else:
-            self.apply_light_theme()
-        self.update_theme_icon()
-
-    def update_theme_icon(self):
-        """更新主题切换按钮图标"""
-        is_dark = self.is_dark_mode()
-        if is_dark:
-            # 在深色模式下显示太阳图标（用于切换到浅色模式）
-            self.theme_btn.setIcon(QIcon(os.path.join(os.path.dirname(os.path.dirname(__file__)), "resource", "about", "sun.png")))
-            self.theme_btn.setToolTip("切换到浅色主题")
-        else:
-            # 在浅色模式下显示月亮图标（用于切换到深色模式）
-            self.theme_btn.setIcon(QIcon(os.path.join(os.path.dirname(os.path.dirname(__file__)), "resource", "about", "moon.png")))
-            self.theme_btn.setToolTip("切换到深色主题")
-
-    def is_dark_mode(self):
-        """检测系统是否处于深色模式"""
-        palette = self.palette()
-        return palette.window().color().lightness() < 128
-
-    def apply_dark_theme(self):
-        """应用深色主题"""
+    def save_window_state(self):
+        """保存窗口状态到配置"""
         try:
-            # 更新日志框样式
-            if hasattr(self, 'log_text'):
-                self.log_text.setStyleSheet("""
-                    QTextEdit {
-                        border: 1px solid #3c3c3c;
-                        border-radius: 4px;
-                        background-color: #2d2d2d;
-                        color: #ffffff;
-                        padding: 5px;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #1e1e1e;
-                        width: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #3c3c3c;
-                        min-height: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #4c4c4c;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                    QScrollBar:horizontal {
-                        background-color: #1e1e1e;
-                        height: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:horizontal {
-                        background-color: #3c3c3c;
-                        min-width: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:horizontal:hover {
-                        background-color: #4c4c4c;
-                    }
-                    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                        width: 0px;
-                    }
-                    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                        background: none;
-                    }
-                """)
-
-            # 更新关于区域样式
-            self.github_link.setStyleSheet("a { color: #4a86e8; }")
-            self.alipay_link.setStyleSheet("a { color: #4a86e8; }")
-            self.about_text.setStyleSheet("""
-                color: #cccccc;
-                font-size: 12px;
-                padding: 10px;
-                background-color: #2d2d2d;
-                border: 1px solid #3c3c3c;
-                border-radius: 4px;
-            """)
-            self.stats_label.setStyleSheet("""
-                color: #cccccc;
-                font-size: 12px;
-                padding: 5px;
-                background-color: #2d2d2d;
-                border: 1px solid #3c3c3c;
-                border-radius: 4px;
-            """)
-
-            # 更新主界面按钮样式
-            self.single_import_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d3d;
-                    border: 1px solid #4c4c4c;
-                }
-                QPushButton:pressed {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3c3c3c;
-                }
-                QPushButton:disabled {
-                    background-color: #1a1a1a;
-                    color: #666666;
-                    border: 1px solid #2c2c2c;
-                }
-            """)
-            self.batch_import_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d3d;
-                    border: 1px solid #4c4c4c;
-                }
-                QPushButton:pressed {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3c3c3c;
-                }
-                QPushButton:disabled {
-                    background-color: #1a1a1a;
-                    color: #666666;
-                    border: 1px solid #2c2c2c;
-                }
-            """)
-            self.update_mod_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d3d;
-                    border: 1px solid #4c4c4c;
-                }
-                QPushButton:pressed {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3c3c3c;
-                }
-                QPushButton:disabled {
-                    background-color: #1a1a1a;
-                    color: #666666;
-                    border: 1px solid #2c2c2c;
-                }
-            """)
-            self.batch_decrypt_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d3d;
-                    border: 1px solid #4c4c4c;
-                }
-                QPushButton:pressed {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3c3c3c;
-                }
-                QPushButton:disabled {
-                    background-color: #1a1a1a;
-                    color: #666666;
-                    border: 1px solid #2c2c2c;
-                }
-            """)
-            # 更新按钮样式
-            self.close_selected_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d3d;
-                    border: 1px solid #4c4c4c;
-                }
-                QPushButton:pressed {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3c3c3c;
-                }
-                QPushButton:disabled {
-                    background-color: #1a1a1a;
-                    color: #666666;
-                    border: 1px solid #2c2c2c;
-                }
-            """)
-            self.close_all_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3d3d3d;
-                    border: 1px solid #4c4c4c;
-                }
-                QPushButton:pressed {
-                    background-color: #2d2d2d;
-                    border: 1px solid #3c3c3c;
-                }
-                QPushButton:disabled {
-                    background-color: #1a1a1a;
-                    color: #666666;
-                    border: 1px solid #2c2c2c;
-                }
-            """)
-
-            # 更新表格样式
-            self.window_list.setStyleSheet("""
-                QTableWidget {
-                    background-color: #1e1e1e;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    border-radius: 4px;
-                    gridline-color: #3c3c3c;
-                }
-                QTableWidget::item {
-                    padding: 5px;
-                    border-bottom: 1px solid #3c3c3c;
-                    color: #ffffff;
-                }
-                QTableWidget::item:selected {
-                    background-color: #3d3d3d;
-                    color: #ffffff;
-                }
-                QTableWidget::item:hover {
-                    background-color: #3d3d3d;
-                    color: #ffffff;
-                }
-                QHeaderView::section {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    padding: 5px;
-                    border: 1px solid #3c3c3c;
-                    font-weight: bold;
-                }
-                QScrollBar:vertical {
-                    background-color: #1e1e1e;
-                    width: 15px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:vertical {
-                    background-color: #3c3c3c;
-                    min-height: 20px;
-                    border-radius: 3px;
-                }
-                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                    height: 0px;
-                }
-                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                    background: none;
-                }
-                QScrollBar:horizontal {
-                    background-color: #1e1e1e;
-                    height: 15px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:horizontal {
-                    background-color: #3c3c3c;
-                    min-width: 20px;
-                    border-radius: 3px;
-                }
-                QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                    width: 0px;
-                }
-                QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                    background: none;
-                }
-            """)
-
-            # 设置全局深色主题样式
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #1e1e1e;
-                }
-                QWidget {
-                    background-color: #1e1e1e;
-                    color: #ffffff;
-                }
-                QGroupBox {
-                    font-weight: bold;
-                    border: 1px solid #3c3c3c;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                    padding-top: 15px;
-                    color: #ffffff;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px;
-                    color: #ffffff;
-                }
-                QTextEdit {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    border-radius: 4px;
-                }
-                QProgressBar {
-                    background-color: #2d2d2d;
-                    color: #ffffff;
-                    border: 1px solid #3c3c3c;
-                    border-radius: 4px;
-                }
-                QProgressBar::chunk {
-                    background-color: #4a86e8;
-                }
-            """)
-
+            # 保存窗口大小和位置（仅在非最大化状态下）
+            is_maximized = self.isMaximized()
+            self.config.set('window_maximized', is_maximized, save_immediately=False)
+            
+            if not is_maximized:
+                # 只在非最大化状态下保存位置和大小
+                self.config.set('window_width', self.width(), save_immediately=False)
+                self.config.set('window_height', self.height(), save_immediately=False)
+                self.config.set('window_x', self.x(), save_immediately=False)
+                self.config.set('window_y', self.y(), save_immediately=False)
+            
+            # 一次性保存所有配置
+            self.config.save()
+            self.logger.info("窗口状态已保存")
         except Exception as e:
-            self.logger.error(f"应用深色主题时出错: {str(e)}")
-            QMessageBox.critical(self, "错误", f"应用深色主题时出错: {str(e)}")
-
-    def apply_light_theme(self):
-        """应用浅色主题"""
-        try:
-            # 更新日志框样式
-            if hasattr(self, 'log_text'):
-                self.log_text.setStyleSheet("""
-                    QTextEdit {
-                        border: 1px solid #cccccc;
-                        border-radius: 4px;
-                        background-color: white;
-                        color: #333333;
-                        padding: 5px;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #f8f9fa;
-                        width: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #dee2e6;
-                        min-height: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #ced4da;
-                    }
-                    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                        height: 0px;
-                    }
-                    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                        background: none;
-                    }
-                    QScrollBar:horizontal {
-                        background-color: #f8f9fa;
-                        height: 12px;
-                        margin: 0px;
-                        border: none;
-                    }
-                    QScrollBar::handle:horizontal {
-                        background-color: #dee2e6;
-                        min-width: 30px;
-                        border-radius: 6px;
-                        margin: 2px;
-                    }
-                    QScrollBar::handle:horizontal:hover {
-                        background-color: #ced4da;
-                    }
-                    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                        width: 0px;
-                    }
-                    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                        background: none;
-                    }
-                """)
-
-            # 更新关于区域样式
-            self.github_link.setStyleSheet("a { color: #0066cc; }")
-            self.alipay_link.setStyleSheet("a { color: #0066cc; }")
-            self.about_text.setStyleSheet("""
-                color: #666666;
-                font-size: 12px;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border: 1px solid #e9ecef;
-                border-radius: 4px;
-            """)
-            self.stats_label.setStyleSheet("""
-                color: #666666;
-                font-size: 12px;
-                padding: 5px;
-                background-color: #f8f9fa;
-                border: 1px solid #e9ecef;
-                border-radius: 4px;
-            """)
-
-            # 更新主界面按钮样式
-            self.single_import_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #4a86e8;
-                    color: white;
-                    border: none;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3a76d8;
-                }
-                QPushButton:pressed {
-                    background-color: #2a66c8;
-                }
-            """)
-            self.batch_decrypt_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #4a86e8;
-                    color: white;
-                    border: none;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #3a76d8;
-                }
-                QPushButton:pressed {
-                    background-color: #2a66c8;
-                }
-            """)
-            self.batch_import_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #28a745;
-                    color: white;
-                    border: none;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #218838;
-                }
-                QPushButton:pressed {
-                    background-color: #1e7e34;
-                }
-            """)
-            self.update_mod_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #28a745;
-                    color: white;
-                    border: none;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #218838;
-                }
-                QPushButton:pressed {
-                    background-color: #1e7e34;
-                }
-            """)
-
-            # 更新按钮样式
-            self.close_selected_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f8f9fa;
-                    color: #333333;
-                    border: 1px solid #dee2e6;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #e9ecef;
-                    border: 1px solid #ced4da;
-                }
-                QPushButton:pressed {
-                    background-color: #f8f9fa;
-                    border: 1px solid #dee2e6;
-                }
-                QPushButton:disabled {
-                    background-color: #f8f9fa;
-                    color: #6c757d;
-                    border: 1px solid #dee2e6;
-                }
-            """)
-            self.close_all_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f8f9fa;
-                    color: #333333;
-                    border: 1px solid #dee2e6;
-                    padding: 8px 15px;
-                    border-radius: 4px;
-                    min-width: 100px;
-                }
-                QPushButton:hover {
-                    background-color: #e9ecef;
-                    border: 1px solid #ced4da;
-                }
-                QPushButton:pressed {
-                    background-color: #f8f9fa;
-                    border: 1px solid #dee2e6;
-                }
-                QPushButton:disabled {
-                    background-color: #f8f9fa;
-                    color: #6c757d;
-                    border: 1px solid #dee2e6;
-                }
-            """)
-
-            # 更新表格样式
-            self.window_list.setStyleSheet("""
-                QTableWidget {
-                    background-color: #ffffff;
-                    color: #333333;
-                    border: 1px solid #dee2e6;
-                    border-radius: 4px;
-                    gridline-color: #dee2e6;
-                }
-                QTableWidget::item {
-                    padding: 5px;
-                    border-bottom: 1px solid #dee2e6;
-                    color: #333333;
-                }
-                QTableWidget::item:selected {
-                    background-color: #e6f3ff;
-                    color: #0066cc;
-                }
-                QTableWidget::item:hover {
-                    background-color: #f5f5f5;
-                    color: #333333;
-                }
-                QHeaderView::section {
-                    background-color: #f8f9fa;
-                    color: #333333;
-                    padding: 5px;
-                    border: 1px solid #dee2e6;
-                    font-weight: bold;
-                }
-                QScrollBar:vertical {
-                    background-color: #f8f9fa;
-                    width: 15px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:vertical {
-                    background-color: #dee2e6;
-                    min-height: 20px;
-                    border-radius: 3px;
-                }
-                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                    height: 0px;
-                }
-                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                    background: none;
-                }
-                QScrollBar:horizontal {
-                    background-color: #f8f9fa;
-                    height: 15px;
-                    margin: 0px;
-                }
-                QScrollBar::handle:horizontal {
-                    background-color: #dee2e6;
-                    min-width: 20px;
-                    border-radius: 3px;
-                }
-                QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                    width: 0px;
-                }
-                QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                    background: none;
-                }
-            """)
-
-            # 设置全局浅色主题样式
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #ffffff;
-                }
-                QWidget {
-                    background-color: #ffffff;
-                    color: #333333;
-                }
-                QGroupBox {
-                    font-weight: bold;
-                    border: 1px solid #dee2e6;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                    padding-top: 15px;
-                    color: #333333;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px;
-                    color: #333333;
-                }
-                QTextEdit {
-                    background-color: #ffffff;
-                    color: #333333;
-                    border: 1px solid #dee2e6;
-                    border-radius: 4px;
-                }
-                QProgressBar {
-                    background-color: #f8f9fa;
-                    color: #333333;
-                    border: 1px solid #dee2e6;
-                    border-radius: 4px;
-                }
-                QProgressBar::chunk {
-                    background-color: #4a86e8;
-                }
-            """)
-
-        except Exception as e:
-            self.logger.error(f"应用浅色主题时出错: {str(e)}")
-            QMessageBox.critical(self, "错误", f"应用浅色主题时出错: {str(e)}")
+            self.logger.error(f"保存窗口状态失败: {e}")
 
     def toggle_theme(self):
         """切换主题"""
-        is_dark = self.is_dark_mode()
-        if is_dark:
-            is_dark_mode = False
-            self.apply_light_theme()
-        else:
-            self.apply_dark_theme()
-        self.last_theme_is_dark = not is_dark
-        self.update_theme_icon()
+        self.theme_manager.toggle_theme()
 
     def filter_files(self):
         """根据搜索框内容过滤文件列表"""
@@ -1784,3 +1324,97 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"打开文件所在位置失败: {str(e)}")
             QMessageBox.critical(self, "错误", f"打开文件所在位置失败: {str(e)}")
+
+    def on_resize(self, event):
+        """处理窗口大小变化事件"""
+        try:
+            # 获取当前窗口大小
+            current_width = self.width()
+            current_height = self.height()
+            
+            # 更新基础字体大小
+            self.base_font_size = max(6, int(current_height * 0.015))
+            self.base_font_size = min(self.base_font_size, 10)
+            
+            # 更新标题字体
+            title_font = QFont()
+            title_font.setPointSize(self.base_font_size + 4)
+            title_font.setBold(True)
+            self.title_label.setFont(title_font)
+            
+            # 更新按钮字体
+            button_font = QFont()
+            # 设置最大字体大小为固定值
+
+
+            button_font.setPointSize(self.base_font_size)
+            for button in [self.single_import_btn, self.batch_import_btn, 
+                         self.update_mod_btn, self.batch_decrypt_btn,
+                         self.close_selected_btn, self.close_all_btn]:
+                button.setFont(button_font)
+            
+            # 更新标签字体
+            label_font = QFont()
+            label_font.setPointSize(self.base_font_size)
+            for label in [self.status_label,
+                         self.stats_label, self.about_text]:
+                label.setFont(label_font)
+            
+            # 更新表格列宽
+            self.window_list.setColumnWidth(2, int(current_width * 0.08))
+            
+            # 更新搜索框字体
+            search_font = QFont()
+            search_font.setPointSize(self.base_font_size)
+            self.search_input.setFont(search_font)
+            
+            # 更新进度条高度
+            self.progress_bar.setFixedHeight(int(current_height * 0.03))
+            
+            # 更新组框标题字体
+            group_font = QFont()
+            group_font.setPointSize(self.base_font_size + 1)
+            group_font.setBold(True)
+            for group in self.findChildren(QGroupBox):
+                group.setFont(group_font)
+            
+            # 更新表格字体
+            table_font = QFont()
+            table_font.setPointSize(self.base_font_size)
+            self.window_list.setFont(table_font)
+            self.window_list.horizontalHeader().setFont(table_font)
+            
+            # 更新链接字体
+            link_font = QFont()
+            link_font.setPointSize(self.base_font_size)
+            self.github_label.setFont(link_font)
+            self.alipay_label.setFont(link_font)
+            
+            # 更新主题标签字体
+            self.theme_label.setFont(label_font)
+            
+            # 更新图标大小
+            icon_size = int(current_height * 0.04)
+            self.theme_btn.setIconSize(QSize(icon_size, icon_size))
+            
+            # # 更新布局间距
+            # for layout in self.findChildren(QVBoxLayout):
+            #     layout.setSpacing(int(current_height * 0.02))
+            # for layout in self.findChildren(QHBoxLayout):
+            #     layout.setSpacing(int(current_width * 0.02))
+            #
+            # # 更新边距
+            # for widget in self.findChildren(QWidget):
+            #     if isinstance(widget, (QGroupBox, QTextEdit, QTableWidget)):
+            #         widget.setContentsMargins(
+            #             int(current_width * 0.02),
+            #             int(current_height * 0.02),
+            #             int(current_width * 0.02),
+            #             int(current_height * 0.02)
+            #         )
+            
+        except Exception as e:
+            self.logger.error(f"调整窗口大小时出错: {str(e)}")
+        
+        # 调用父类的resizeEvent
+        super().resizeEvent(event)

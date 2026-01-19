@@ -1,0 +1,57 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 仅在推送 v 开头的 tag 时触发，如 v1.0.0
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller arknight_AB_Auto_Package.spec
+          
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        
+      - name: Create ZIP archive
+        run: |
+          Compress-Archive -Path dist\* -DestinationPath "Unity_Resource_Editor_${{ steps.get_version.outputs.VERSION }}_Windows.zip"
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity_Resource_Editor_${{ steps.get_version.outputs.VERSION }}
+          path: dist/
+          
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Unity 资源编辑器 ${{ steps.get_version.outputs.VERSION }}
+          body: ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+          files: |
+            Unity_Resource_Editor_${{ steps.get_version.outputs.VERSION }}_Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

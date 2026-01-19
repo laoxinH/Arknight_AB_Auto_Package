@@ -9,6 +9,8 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QProgressBar, QMessageBox, QHeaderView)
 
 from src.core.asset_extractor import AssetExtractor
+from src.worker.BundleValidateWorker import BundleValidateWorker
+
 
 class DecryptThread(QThread):
     """单个解密线程"""
@@ -59,14 +61,13 @@ class BatchDecryptWorker(QThread):
     error = pyqtSignal(str)
     file_progress = pyqtSignal(int, str)  # 文件索引, 状态
 
-    def __init__(self, source_dir: str, target_dir: str, max_threads: int = 10):
+    def __init__(self, ab_files: list[str], target_dir: str, max_threads: int = 10):
         super().__init__()
-        self.source_dir = source_dir
+        self.ab_files = ab_files
         self.target_dir = target_dir
         self.max_threads = max_threads
         self.mutex = QMutex()
         self.threads = []
-        self.ab_files = []
         self.completed_files = 0
         self.is_running = True
         self.file_status = {}  # 用于跟踪文件状态
@@ -75,16 +76,6 @@ class BatchDecryptWorker(QThread):
         """执行批量解密"""
         try:
             self.progress.emit("开始批量解密...")
-            
-            # 查找所有.ab文件
-            for root, _, files in os.walk(self.source_dir):
-                for file in files:
-                    if file.endswith('.ab'):
-                        self.ab_files.append(os.path.join(root, file))
-
-            if not self.ab_files:
-                self.error.emit("未找到任何资源包文件！")
-                return
 
             # 创建输出目录
             os.makedirs(self.target_dir, exist_ok=True)
@@ -179,6 +170,7 @@ class BatchDecryptDialog(QDialog):
     """批量解密对话框类"""
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.all_files = []
         self.setWindowTitle("批量解密")
         self.setMinimumSize(800, 600)
         self.resize(800, 600)
@@ -299,19 +291,39 @@ class BatchDecryptDialog(QDialog):
             self.input_dir = dir_path
             self.path_label.setText(dir_path)
             self.ab_files = []
+            self.all_files = []
 
             # 查找所有.ab文件
             for root, _, files in os.walk(dir_path):
                 for file in files:
-                    if file.endswith('.ab'):
-                        self.ab_files.append(os.path.join(root, file))
+                    self.all_files.append(os.path.join(root, file))
+
+            # 创建并启动验证线程
+            self.validate_worker = BundleValidateWorker(self.all_files)
+            # self.validate_worker.progress.connect(self.progress_bar.)
+
+            self.validate_worker.validated.connect(self.on_validate_complete)
+            # self.validate_worker.error.connect(self.handle_error)
+            self.validate_worker.start()
+
+
 
             # 更新文件列表
-            self.update_file_list()
-            self.export_btn.setEnabled(len(self.ab_files) > 0)
+            # self.update_file_list()
+            # self.export_btn.setEnabled(len(self.ab_files) > 0)
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入文件时出错: {str(e)}")
+
+    def on_validate_complete(self, valid_files):
+        """验证完成处理"""
+        try:
+            self.ab_files = valid_files
+            self.update_file_list()
+            self.export_btn.setEnabled(len(self.ab_files) > 0)
+        except Exception as e:
+            logging.error(f"处理验证完成时出错: {str(e)}")
+            QMessageBox.critical(self, "错误", f"处理验证完成时出错: {str(e)}")
 
     def update_file_list(self):
         """更新文件列表"""
@@ -354,7 +366,7 @@ class BatchDecryptDialog(QDialog):
             self.cancel_btn.setEnabled(False)
 
             # 创建并启动工作线程
-            self.worker = BatchDecryptWorker(self.input_dir, output_dir)
+            self.worker = BatchDecryptWorker(self.ab_files, output_dir)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.on_decrypt_finished)
             self.worker.error.connect(self.on_decrypt_error)
