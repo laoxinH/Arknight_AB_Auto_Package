@@ -360,8 +360,8 @@ class MainWindow(QMainWindow):
         
         # 添加说明文字
         from src.utils.path_helper import get_logs_dir
-        logs_path = get_logs_dir()
-        self.about_text = QLabel(f"感谢您的使用！\n\n如果觉得这个工具对您有帮助，\n欢迎在GitHub上点个Star或支持作者。\n\n日志文件保存在:\n{logs_path}")
+
+        self.about_text = QLabel(f"感谢您的使用！\n\n如果觉得这个工具对您有帮助，\n欢迎在GitHub上点个Star或支持作者。")
         self.about_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.about_text.setStyleSheet("color: #666666; font-size: 13px; line-height: 1.6;")
         about_layout.addWidget(self.about_text)

@@ -5,3 +5,5 @@ numpy>=1.21.0
 py7zr>=0.22.0
 backports-zstd>=1.0.0
 pyzipper>=0.3.6
+fmod_toolkit>=1.0.0
+pyfmodex>=0.8.0

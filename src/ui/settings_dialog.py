@@ -136,8 +136,6 @@ class SettingsDialog(QDialog):
             "• WARNING: 仅记录警告和错误\n"
             "• ERROR: 仅记录错误信息\n"
             "• CRITICAL: 仅记录严重错误\n\n"
-            f"日志文件保存位置:\n{get_logs_dir()}\n\n"
-            f"配置文件保存位置:\n{get_config_dir()}"
         )
         log_desc.setStyleSheet("color: #666666; font-size: 12px;")
         log_desc.setWordWrap(True)
@@ -776,21 +774,23 @@ class SettingsDialog(QDialog):
         try:
             logs_dir = get_logs_dir()
             log_files = list(logs_dir.glob("app_*.log"))
-            
+            log_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            # 排除最新日志
+            log_files.remove(log_files[0])
             if not log_files:
                 QMessageBox.information(self, "提示", "暂无日志文件需要清理")
                 return
             
             # 计算总大小
             total_size = sum(f.stat().st_size for f in log_files)
-            size_mb = total_size / (1024 * 1024)
+            size_mb = total_size / 1024
             
             # 确认对话框
             reply = QMessageBox.question(
                 self,
                 "确认清理",
                 f"确定要删除所有日志文件吗？\n\n"
-                f"共 {len(log_files)} 个文件，占用 {size_mb:.2f} MB\n\n"
+                f"共 {len(log_files)} 个文件，占用 {size_mb:.2f} KB\n\n"
                 f"此操作不可恢复！",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No

@@ -54,17 +54,53 @@ if os.path.exists(numpy_libs_path):
     for lib_file in glob.glob(os.path.join(numpy_libs_path, '*.dll')):
         numpy_binaries.append((lib_file, 'numpy/.libs'))
 
+# 收集 fmod_toolkit 和 pyfmodex 相关依赖（音频处理）
+fmod_datas = []
+fmod_binaries = []
+fmod_hiddenimports = []
+
+try:
+    import fmod_toolkit
+    fmod_toolkit_path = os.path.dirname(fmod_toolkit.__file__)
+    
+    # 收集 fmod_toolkit 的所有数据文件
+    fmod_toolkit_datas, fmod_toolkit_binaries, fmod_toolkit_hiddenimports = collect_all('fmod_toolkit')
+    fmod_datas += fmod_toolkit_datas
+    fmod_binaries += fmod_toolkit_binaries
+    fmod_hiddenimports += fmod_toolkit_hiddenimports
+    
+    # 手动添加 FMOD DLL 文件
+    fmod_lib_path = os.path.join(fmod_toolkit_path, 'libfmod', 'Windows', 'x64')
+    if os.path.exists(fmod_lib_path):
+        for dll_file in glob.glob(os.path.join(fmod_lib_path, '*.dll')):
+            fmod_binaries.append((dll_file, 'fmod_toolkit/libfmod/Windows/x64'))
+    
+    print(f"✓ Found fmod_toolkit at: {fmod_toolkit_path}")
+    if os.path.exists(fmod_lib_path):
+        print(f"✓ Found FMOD DLLs at: {fmod_lib_path}")
+except ImportError:
+    print("⚠ fmod_toolkit not found, audio features may not work")
+
+try:
+    # 收集 pyfmodex
+    pyfmodex_datas, pyfmodex_binaries, pyfmodex_hiddenimports = collect_all('pyfmodex')
+    fmod_datas += pyfmodex_datas
+    fmod_binaries += pyfmodex_binaries
+    fmod_hiddenimports += pyfmodex_hiddenimports
+except ImportError:
+    print("⚠ pyfmodex not found")
+
 a = Analysis(
     ['src/main.py'],
     pathex=[],
-    binaries=py7zr_binaries + backports_zstd_binaries + numpy_binaries,
+    binaries=py7zr_binaries + backports_zstd_binaries + numpy_binaries + fmod_binaries,
     datas=[
         ('src/resource/icon.webp', 'src/resource'),
         (unitypy_resources, 'UnityPy/resources'),
         (archspec_path, 'archspec'),
         (payme_path, 'src/resource/payme'),  # 添加支付码图片目录
         (about_path, 'src/resource/about'),   # 添加关于页面图片目录
-    ] + py7zr_datas + backports_zstd_datas + numpy_datas,
+    ] + py7zr_datas + backports_zstd_datas + numpy_datas + fmod_datas,
     hiddenimports=[
         'UnityPy.resources',
         'archspec',
@@ -103,7 +139,13 @@ a = Analysis(
         'numpy.random._sfc64',
         'numpy.random._generator',
         'numpy.random.bit_generator',
-    ] + src_hiddenimports + py7zr_hiddenimports + backports_zstd_hiddenimports + numpy_hiddenimports,
+        # FMOD 音频支持
+        'fmod_toolkit',
+        'fmod_toolkit.fmod',
+        'fmod_toolkit.importer',
+        'pyfmodex',
+        'pyfmodex.fmodex',
+    ] + src_hiddenimports + py7zr_hiddenimports + backports_zstd_hiddenimports + numpy_hiddenimports + fmod_hiddenimports,
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],

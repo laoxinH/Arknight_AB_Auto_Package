@@ -156,6 +156,9 @@ imports:
  &#8226;   <a href="#encodings.uu_codec">encodings.uu_codec</a>
  &#8226;   <a href="#encodings.zlib_codec">encodings.zlib_codec</a>
  &#8226;   <a href="#enum">enum</a>
+ &#8226;   <a href="#fmod_toolkit">fmod_toolkit</a>
+ &#8226;   <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
+ &#8226;   <a href="#fmod_toolkit.importer">fmod_toolkit.importer</a>
  &#8226;   <a href="#functools">functools</a>
  &#8226;   <a href="#genericpath">genericpath</a>
  &#8226;   <a href="#heapq">heapq</a>
@@ -462,6 +465,44 @@ imports:
  &#8226;   <a href="#py7zr.py7zr">py7zr.py7zr</a>
  &#8226;   <a href="#py7zr.version">py7zr.version</a>
  &#8226;   <a href="#py7zr.win32compat">py7zr.win32compat</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
+ &#8226;   <a href="#pyfmodex.callback_prototypes">pyfmodex.callback_prototypes</a>
+ &#8226;   <a href="#pyfmodex.channel">pyfmodex.channel</a>
+ &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
+ &#8226;   <a href="#pyfmodex.channel_group">pyfmodex.channel_group</a>
+ &#8226;   <a href="#pyfmodex.cone_settings">pyfmodex.cone_settings</a>
+ &#8226;   <a href="#pyfmodex.constants">pyfmodex.constants</a>
+ &#8226;   <a href="#pyfmodex.dsp">pyfmodex.dsp</a>
+ &#8226;   <a href="#pyfmodex.dsp_connection">pyfmodex.dsp_connection</a>
+ &#8226;   <a href="#pyfmodex.enums">pyfmodex.enums</a>
+ &#8226;   <a href="#pyfmodex.exceptions">pyfmodex.exceptions</a>
+ &#8226;   <a href="#pyfmodex.flags">pyfmodex.flags</a>
+ &#8226;   <a href="#pyfmodex.fmodex">pyfmodex.fmodex</a>
+ &#8226;   <a href="#pyfmodex.fmodobject">pyfmodex.fmodobject</a>
+ &#8226;   <a href="#pyfmodex.function_prototypes">pyfmodex.function_prototypes</a>
+ &#8226;   <a href="#pyfmodex.geometry">pyfmodex.geometry</a>
+ &#8226;   <a href="#pyfmodex.globalvars">pyfmodex.globalvars</a>
+ &#8226;   <a href="#pyfmodex.reverb">pyfmodex.reverb</a>
+ &#8226;   <a href="#pyfmodex.reverb_presets">pyfmodex.reverb_presets</a>
+ &#8226;   <a href="#pyfmodex.roomproperties">pyfmodex.roomproperties</a>
+ &#8226;   <a href="#pyfmodex.sound">pyfmodex.sound</a>
+ &#8226;   <a href="#pyfmodex.sound_group">pyfmodex.sound_group</a>
+ &#8226;   <a href="#pyfmodex.structobject">pyfmodex.structobject</a>
+ &#8226;   <a href="#pyfmodex.structure_declarations">pyfmodex.structure_declarations</a>
+ &#8226;   <a href="#pyfmodex.structures">pyfmodex.structures</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.bank">pyfmodex.studio.bank</a>
+ &#8226;   <a href="#pyfmodex.studio.enums">pyfmodex.studio.enums</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+ &#8226;   <a href="#pyfmodex.studio.flags">pyfmodex.studio.flags</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
+ &#8226;   <a href="#pyfmodex.studio.structures">pyfmodex.studio.structures</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+ &#8226;   <a href="#pyfmodex.studio.utils">pyfmodex.studio.utils</a>
+ &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
+ &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
  &#8226;   <a href="#pyi_rth_inspect.py">pyi_rth_inspect.py</a>
  &#8226;   <a href="#pyi_rth_multiprocessing.py">pyi_rth_multiprocessing.py</a>
  &#8226;   <a href="#pyi_rth_pkgres.py">pyi_rth_pkgres.py</a>
@@ -5006,6 +5047,7 @@ imported by:
  &#8226;   <a href="#src.ui.file_selector">src.ui.file_selector</a>
  &#8226;   <a href="#src.ui.main_window">src.ui.main_window</a>
  &#8226;   <a href="#src.ui.preview.preview_manager">src.ui.preview.preview_manager</a>
+ &#8226;   <a href="#src.ui.settings_dialog">src.ui.settings_dialog</a>
  &#8226;   <a href="#src.ui.themes.file_selector_theme_manager">src.ui.themes.file_selector_theme_manager</a>
  &#8226;   <a href="#src.ui.widgets.json_highlighter">src.ui.widgets.json_highlighter</a>
 
@@ -16470,6 +16512,12 @@ imported by:
  &#8226;   <a href="#pyfmodex.sound_group">pyfmodex.sound_group</a>
  &#8226;   <a href="#pyfmodex.structure_declarations">pyfmodex.structure_declarations</a>
  &#8226;   <a href="#pyfmodex.structures">pyfmodex.structures</a>
+ &#8226;   <a href="#pyfmodex.studio.bank">pyfmodex.studio.bank</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
+ &#8226;   <a href="#pyfmodex.studio.structures">pyfmodex.studio.structures</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
  &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
  &#8226;   <a href="#setuptools._vendor.packaging._manylinux">setuptools._vendor.packaging._manylinux</a>
  &#8226;   <a href="#setuptools._vendor.platformdirs.windows">setuptools._vendor.platformdirs.windows</a>
@@ -16742,6 +16790,7 @@ imported by:
  &#8226;   <a href="#setuptools.warnings">setuptools.warnings</a>
  &#8226;   <a href="#src.core.asset_extractor">src.core.asset_extractor</a>
  &#8226;   <a href="#src.core.crosscore_cryptor">src.core.crosscore_cryptor</a>
+ &#8226;   <a href="#src.ui.settings_dialog">src.ui.settings_dialog</a>
  &#8226;   <a href="#src.utils.logger">src.utils.logger</a>
  &#8226;   <a href="#tomllib._re">tomllib._re</a>
  &#8226;   <a href="#win32ctypes.pywin32.pywintypes">win32ctypes.pywin32.pywintypes</a>
@@ -19996,6 +20045,8 @@ imported by:
  &#8226;   <a href="#pyfmodex.flags">pyfmodex.flags</a>
  &#8226;   <a href="#pyfmodex.reverb_presets">pyfmodex.reverb_presets</a>
  &#8226;   <a href="#pyfmodex.roomproperties">pyfmodex.roomproperties</a>
+ &#8226;   <a href="#pyfmodex.studio.enums">pyfmodex.studio.enums</a>
+ &#8226;   <a href="#pyfmodex.studio.flags">pyfmodex.studio.flags</a>
  &#8226;   <a href="#pyzstd.c">pyzstd.c</a>
  &#8226;   <a href="#re">re</a>
  &#8226;   <a href="#setuptools._vendor.packaging._elffile">setuptools._vendor.packaging._elffile</a>
@@ -20186,6 +20237,7 @@ imported by:
     <a href="#UnityPy.export.AudioClipConverter">UnityPy.export.AudioClipConverter</a>
  &#8226;   <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
  &#8226;   <a href="#fmod_toolkit.importer">fmod_toolkit.importer</a>
+ &#8226;   <a href="#main.py">main.py</a>
 
   </div>
 
@@ -20213,6 +20265,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#fmod_toolkit">fmod_toolkit</a>
+ &#8226;   <a href="#main.py">main.py</a>
 
   </div>
 
@@ -20234,6 +20287,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
+ &#8226;   <a href="#main.py">main.py</a>
 
   </div>
 
@@ -35593,6 +35647,7 @@ imported by:
  &#8226;   <a href="#pyfmodex.callback_prototypes">pyfmodex.callback_prototypes</a>
  &#8226;   <a href="#pyfmodex.fmodex">pyfmodex.fmodex</a>
  &#8226;   <a href="#pyfmodex.function_prototypes">pyfmodex.function_prototypes</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
  &#8226;   <a href="#pyi_rth_inspect.py">pyi_rth_inspect.py</a>
  &#8226;   <a href="#pyi_rth_pkgres.py">pyi_rth_pkgres.py</a>
  &#8226;   <a href="#pyi_rth_pyqt6.py">pyi_rth_pyqt6.py</a>
@@ -36583,6 +36638,7 @@ imported by:
  &#8226;   <a href="#py7zr.win32compat">py7zr.win32compat</a>
  &#8226;   <a href="#pydoc">pydoc</a>
  &#8226;   <a href="#pyfmodex.fmodex">pyfmodex.fmodex</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
  &#8226;   <a href="#setuptools._distutils.compat.py39">setuptools._distutils.compat.py39</a>
  &#8226;   <a href="#setuptools._distutils.spawn">setuptools._distutils.spawn</a>
  &#8226;   <a href="#setuptools._vendor.importlib_metadata._compat">setuptools._vendor.importlib_metadata._compat</a>
@@ -37479,6 +37535,7 @@ imports:
 imported by:
     <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
  &#8226;   <a href="#fmod_toolkit.importer">fmod_toolkit.importer</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#pyfmodex">pyfmodex</a>
  &#8226;   <a href="#pyfmodex.callback_prototypes">pyfmodex.callback_prototypes</a>
  &#8226;   <a href="#pyfmodex.channel">pyfmodex.channel</a>
@@ -37504,6 +37561,9 @@ imported by:
  &#8226;   <a href="#pyfmodex.structobject">pyfmodex.structobject</a>
  &#8226;   <a href="#pyfmodex.structure_declarations">pyfmodex.structure_declarations</a>
  &#8226;   <a href="#pyfmodex.structures">pyfmodex.structures</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+ &#8226;   <a href="#pyfmodex.studio.utils">pyfmodex.studio.utils</a>
  &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
  &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
 
@@ -37524,7 +37584,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.fmodex">pyfmodex.fmodex</a>
  &#8226;   <a href="#pyfmodex.structures">pyfmodex.structures</a>
  &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
@@ -37548,7 +37609,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37573,7 +37635,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.channel">pyfmodex.channel</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.channel">pyfmodex.channel</a>
  &#8226;   <a href="#pyfmodex.channel_group">pyfmodex.channel_group</a>
 
   </div>
@@ -37594,7 +37657,9 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
 
   </div>
 
@@ -37613,7 +37678,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.sound">pyfmodex.sound</a>
 
   </div>
@@ -37630,7 +37696,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37654,7 +37721,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
  &#8226;   <a href="#pyfmodex.reverb_presets">pyfmodex.reverb_presets</a>
 
   </div>
@@ -37675,7 +37743,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37693,6 +37762,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#pyfmodex.dsp">pyfmodex.dsp</a>
  &#8226;   <a href="#pyfmodex.dsp_connection">pyfmodex.dsp_connection</a>
  &#8226;   <a href="#pyfmodex.reverb_presets">pyfmodex.reverb_presets</a>
@@ -37716,7 +37786,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.system">pyfmodex.system</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
  &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
 
   </div>
@@ -37735,9 +37806,11 @@ imports:
   <div class="import">
 imported by:
     <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.dsp">pyfmodex.dsp</a>
  &#8226;   <a href="#pyfmodex.sound">pyfmodex.sound</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
  &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
 
   </div>
@@ -37762,7 +37835,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37780,7 +37854,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.channel">pyfmodex.channel</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.channel">pyfmodex.channel</a>
  &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.cone_settings">pyfmodex.cone_settings</a>
  &#8226;   <a href="#pyfmodex.dsp">pyfmodex.dsp</a>
@@ -37808,7 +37883,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.structures">pyfmodex.structures</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.structures">pyfmodex.structures</a>
 
   </div>
 
@@ -37829,7 +37905,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37845,7 +37922,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
  &#8226;   <a href="#pyfmodex.channel">pyfmodex.channel</a>
  &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.channel_group">pyfmodex.channel_group</a>
@@ -37876,7 +37954,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37895,7 +37974,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37913,7 +37993,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37938,7 +38019,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37958,7 +38040,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -37974,7 +38057,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.dsp">pyfmodex.dsp</a>
  &#8226;   <a href="#pyfmodex.fmodex">pyfmodex.fmodex</a>
  &#8226;   <a href="#pyfmodex.sound">pyfmodex.sound</a>
@@ -37996,6 +38080,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#fmod_toolkit.fmod">fmod_toolkit.fmod</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#pyfmodex.callback_prototypes">pyfmodex.callback_prototypes</a>
  &#8226;   <a href="#pyfmodex.function_prototypes">pyfmodex.function_prototypes</a>
  &#8226;   <a href="#pyfmodex.structures">pyfmodex.structures</a>
@@ -38019,12 +38104,249 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.dsp">pyfmodex.dsp</a>
  &#8226;   <a href="#pyfmodex.geometry">pyfmodex.geometry</a>
  &#8226;   <a href="#pyfmodex.reverb">pyfmodex.reverb</a>
  &#8226;   <a href="#pyfmodex.sound">pyfmodex.sound</a>
  &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/__init__.py" type="text/plain"><tt>pyfmodex.studio</tt></a>
+<span class="moduletype">Package</span>  <div class="import">
+imports:
+    <a href="#pyfmodex">pyfmodex</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.bank">pyfmodex.studio.bank</a>
+ &#8226;   <a href="#pyfmodex.studio.enums">pyfmodex.studio.enums</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+ &#8226;   <a href="#pyfmodex.studio.flags">pyfmodex.studio.flags</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
+ &#8226;   <a href="#pyfmodex.studio.structures">pyfmodex.studio.structures</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+ &#8226;   <a href="#pyfmodex.studio.utils">pyfmodex.studio.utils</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.bank"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/bank.py" type="text/plain"><tt>pyfmodex.studio.bank</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.enums"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/enums.py" type="text/plain"><tt>pyfmodex.studio.enums</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#enum">enum</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.event_description"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/event_description.py" type="text/plain"><tt>pyfmodex.studio.event_description</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.enums">pyfmodex.studio.enums</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.bank">pyfmodex.studio.bank</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.event_instance"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/event_instance.py" type="text/plain"><tt>pyfmodex.studio.event_instance</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#pyfmodex.channel_group">pyfmodex.channel_group</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.enums">pyfmodex.studio.enums</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+ &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.flags"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/flags.py" type="text/plain"><tt>pyfmodex.studio.flags</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#enum">enum</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.library"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/library.py" type="text/plain"><tt>pyfmodex.studio.library</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#platform">platform</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#sys">sys</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.structures"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/structures.py" type="text/plain"><tt>pyfmodex.studio.structures</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.studio_object"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/studio_object.py" type="text/plain"><tt>pyfmodex.studio.studio_object</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
+ &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.bank">pyfmodex.studio.bank</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.system"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/system.py" type="text/plain"><tt>pyfmodex.studio.system</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#ctypes">ctypes</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
+ &#8226;   <a href="#pyfmodex.flags">pyfmodex.flags</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+ &#8226;   <a href="#pyfmodex.studio.bank">pyfmodex.studio.bank</a>
+ &#8226;   <a href="#pyfmodex.studio.event_description">pyfmodex.studio.event_description</a>
+ &#8226;   <a href="#pyfmodex.studio.flags">pyfmodex.studio.flags</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
+ &#8226;   <a href="#pyfmodex.studio.structures">pyfmodex.studio.structures</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+ &#8226;   <a href="#pyfmodex.studio.utils">pyfmodex.studio.utils</a>
+ &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="pyfmodex.studio.utils"></a>
+  <a target="code" href="///C:/Users/thixi/project/Arknight_AB_Auto_Package/venv/Lib/site-packages/pyfmodex/studio/utils.py" type="text/plain"><tt>pyfmodex.studio.utils</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#pyfmodex">pyfmodex</a>
+ &#8226;   <a href="#pyfmodex.studio">pyfmodex.studio</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
 
   </div>
 
@@ -38050,7 +38372,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
 
   </div>
 
@@ -38069,7 +38392,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#pyfmodex">pyfmodex</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#pyfmodex">pyfmodex</a>
  &#8226;   <a href="#pyfmodex.channel">pyfmodex.channel</a>
  &#8226;   <a href="#pyfmodex.channel_control">pyfmodex.channel_control</a>
  &#8226;   <a href="#pyfmodex.channel_group">pyfmodex.channel_group</a>
@@ -38080,6 +38404,9 @@ imported by:
  &#8226;   <a href="#pyfmodex.geometry">pyfmodex.geometry</a>
  &#8226;   <a href="#pyfmodex.reverb">pyfmodex.reverb</a>
  &#8226;   <a href="#pyfmodex.sound">pyfmodex.sound</a>
+ &#8226;   <a href="#pyfmodex.studio.event_instance">pyfmodex.studio.event_instance</a>
+ &#8226;   <a href="#pyfmodex.studio.studio_object">pyfmodex.studio.studio_object</a>
+ &#8226;   <a href="#pyfmodex.studio.system">pyfmodex.studio.system</a>
  &#8226;   <a href="#pyfmodex.system">pyfmodex.system</a>
 
   </div>
@@ -44342,11 +44669,15 @@ imported by:
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#src.config.config_manager">src.config.config_manager</a>
  &#8226;   <a href="#src.ui">src.ui</a>
  &#8226;   <a href="#src.utils.path_helper">src.utils.path_helper</a>
+ &#8226;   <a href="#subprocess">subprocess</a>
+ &#8226;   <a href="#sys">sys</a>
 
   </div>
   <div class="import">
@@ -45086,6 +45417,7 @@ imported by:
  &#8226;   <a href="#setuptools._vendor.wheel.vendored.packaging._musllinux">setuptools._vendor.wheel.vendored.packaging._musllinux</a>
  &#8226;   <a href="#setuptools._vendor.wheel.vendored.packaging.tags">setuptools._vendor.wheel.vendored.packaging.tags</a>
  &#8226;   <a href="#setuptools.installer">setuptools.installer</a>
+ &#8226;   <a href="#src.ui.settings_dialog">src.ui.settings_dialog</a>
  &#8226;   <a href="#uuid">uuid</a>
  &#8226;   <a href="#webbrowser">webbrowser</a>
 
@@ -45294,6 +45626,7 @@ imported by:
  &#8226;   <a href="#py_compile">py_compile</a>
  &#8226;   <a href="#pydoc">pydoc</a>
  &#8226;   <a href="#pyfmodex.fmodex">pyfmodex.fmodex</a>
+ &#8226;   <a href="#pyfmodex.studio.library">pyfmodex.studio.library</a>
  &#8226;   <a href="#pyfmodex.utils">pyfmodex.utils</a>
  &#8226;   <a href="#pyi_rth_inspect.py">pyi_rth_inspect.py</a>
  &#8226;   <a href="#pyi_rth_multiprocessing.py">pyi_rth_multiprocessing.py</a>
@@ -45368,6 +45701,7 @@ imported by:
  &#8226;   <a href="#site">site</a>
  &#8226;   <a href="#socket">socket</a>
  &#8226;   <a href="#socketserver">socketserver</a>
+ &#8226;   <a href="#src.ui.settings_dialog">src.ui.settings_dialog</a>
  &#8226;   <a href="#src.utils.logger">src.utils.logger</a>
  &#8226;   <a href="#src.utils.path_helper">src.utils.path_helper</a>
  &#8226;   <a href="#ssl">ssl</a>

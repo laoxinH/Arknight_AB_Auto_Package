@@ -37,10 +37,10 @@ def get_user_data_dir() -> Path:
     """
     if os.name == 'nt':  # Windows
         base_dir = Path(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')))
-        data_dir = base_dir / "ArknightABTool"
+        data_dir = base_dir / "UnityABTool"
     else:  # Linux/Mac
         base_dir = Path.home() / ".local" / "share"
-        data_dir = base_dir / "ArknightABTool"
+        data_dir = base_dir / "UnityABTool"
     
     # 确保目录存在
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -54,6 +54,22 @@ def get_config_dir() -> Path:
     Returns:
         Path: 配置目录路径
     """
+    try:
+        # 优先使用APP运行位置
+        config_dir = get_app_root()
+        # logs_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir
+    except (OSError, PermissionError):
+        # 如果APP运行位置目录不可用，使用用户数据目录
+        config_dir = get_user_data_dir()
+        config_dir.mkdir(parents=True, exist_ok=True)
+        # 测试是否有写权限
+        test_file = config_dir / ".test"
+        test_file.touch()
+        test_file.unlink()
+        return config_dir
+
+
     if os.name == 'nt':  # Windows
         base_dir = Path(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')))
         config_dir = base_dir / "ArknightABTool"
@@ -76,7 +92,12 @@ def get_logs_dir() -> Path:
         Path: 日志目录路径
     """
     try:
-        # 优先使用用户数据目录
+        # 优先使用APP运行位置
+        logs_dir = get_app_root() / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        return logs_dir
+    except (OSError, PermissionError):
+        # 如果APP运行位置目录不可用，使用用户数据目录
         logs_dir = get_user_data_dir() / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         # 测试是否有写权限
@@ -84,11 +105,7 @@ def get_logs_dir() -> Path:
         test_file.touch()
         test_file.unlink()
         return logs_dir
-    except (OSError, PermissionError):
-        # 如果用户数据目录不可用，使用应用程序目录
-        logs_dir = get_app_root() / "logs"
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        return logs_dir
+
 
 
 def get_temp_dir() -> Path:
