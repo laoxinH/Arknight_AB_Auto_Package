@@ -35,8 +35,6 @@ MANIFEST
 # *.spec
 
 # PyInstaller output directories
-build/
-dist/
 
 # Installer logs
 pip-log.txt

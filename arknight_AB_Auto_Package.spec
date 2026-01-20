@@ -75,11 +75,11 @@ try:
         for dll_file in glob.glob(os.path.join(fmod_lib_path, '*.dll')):
             fmod_binaries.append((dll_file, 'fmod_toolkit/libfmod/Windows/x64'))
     
-    print(f"✓ Found fmod_toolkit at: {fmod_toolkit_path}")
+    print(f"[OK] Found fmod_toolkit at: {fmod_toolkit_path}")
     if os.path.exists(fmod_lib_path):
-        print(f"✓ Found FMOD DLLs at: {fmod_lib_path}")
+        print(f"[OK] Found FMOD DLLs at: {fmod_lib_path}")
 except ImportError:
-    print("⚠ fmod_toolkit not found, audio features may not work")
+    print("[WARNING] fmod_toolkit not found, audio features may not work")
 
 try:
     # 收集 pyfmodex
@@ -88,7 +88,7 @@ try:
     fmod_binaries += pyfmodex_binaries
     fmod_hiddenimports += pyfmodex_hiddenimports
 except ImportError:
-    print("⚠ pyfmodex not found")
+    print("[WARNING] pyfmodex not found")
 
 a = Analysis(
     ['src/main.py'],
