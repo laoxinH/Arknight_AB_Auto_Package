@@ -161,3 +161,4 @@ workspace/cache/
 config/local_*
 .env.local
 config.json
+/build/
