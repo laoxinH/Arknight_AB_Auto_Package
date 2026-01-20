@@ -189,5 +189,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='Arknight_AB_Auto_Package',  # 输出文件夹名称
+    name='Arknight_AB_Auto_Package',  # 输出文件夹名称 
 ) 
